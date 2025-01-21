@@ -1,0 +1,11 @@
+# Cache and build folders
+/.vs
+/x64
+
+# Visual studio stuff
+*.sln
+*.vcxproj
+*.vcxproj.*
+
+# Anything starting with 3 underscores
+___*
