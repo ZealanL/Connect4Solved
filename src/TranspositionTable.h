@@ -44,7 +44,7 @@ struct TranspositionTable {
 		}
 
 		Entry& operator[](size_t index) {
-			ASSERT(index < BUCKET_SIZE);
+			ASSERT(index < BUCKET_SIZE, STR("Bucket index (" << index << ")"));
 			return entries[index];
 		}
 	};

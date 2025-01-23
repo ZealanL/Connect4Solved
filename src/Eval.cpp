@@ -23,18 +23,7 @@ static BoardMask g_WinStatesForPos[BOARD_SIZE_X][BOARD_SIZE_Y][MAX_WINS_PER_POS]
 static BoardMask g_WinStates[NUM_WINNING_STATES];
 
 void Eval::Init() {
-	g_CenterMask = {};
-	g_VeryCenterMask = {};
-
-	for (int x = 0; x < BOARD_SIZE_X; x++) {
-		int marginX = MIN(x, BOARD_SIZE_X - x - 1);
-		for (int y = 0; y < BOARD_SIZE_Y; y++) {
-			if (marginX >= CENTERED_MARGIN_X)
-				g_CenterMask.Set(x, y, true);
-			if (marginX >= VERY_CENTERED_MARGIN_X)
-				g_VeryCenterMask.Set(x, y, true);
-		}
-	}
+	LOG("Initializing eval...");
 
 	//////////////////
 
@@ -107,43 +96,6 @@ bool Eval::IsWonAfterMove(const BoardState& board) {
 			return true;
 	
 	return false;
-}
-
-int EvalTeam(const BoardMask& hbSelf, const BoardMask& hbOpp) {
-	auto numOpenWins = Util::BitCount64(BoardMask::GetWinMask(hbSelf) & ~hbOpp);
-	auto numOpenOneMinuses = Util::BitCount64(BoardMask::GetWinMask(hbSelf, true) & ~hbOpp);
-
-	return numOpenWins;
-}
-
-int EvalPosition(const BoardMask& hbSelf, const BoardMask& hbOpp) {
-	return EvalTeam(hbSelf, hbOpp) - EvalTeam(hbOpp, hbSelf);
-}
-
-int Eval::EvalBoard(const BoardState& board, bool winOnly, BoardMask validMoveMask) {
-	
-	auto winMask = board.GetWinMask(board.turnSwitch);
-	if (winMask & validMoveMask) {
-		// We can win next turn
-		return WIN_BASE_VALUE - 1;
-	}
-
-	// Despite this seeming very useful, it doesnt' seem to help
-	auto oppWinMask = board.GetWinMask(!board.turnSwitch);
-	if (Util::BitCount64(oppWinMask & validMoveMask) > 1) {
-		// Opponent can win next turn because they have multiple mate threats
-		return -WIN_BASE_VALUE + 2;
-	}
-
-	return 0;
-}
-
-int Eval::EvalMove(const BoardState& board, BoardMask moveMask) {
-	BoardMask hbSelfAfterMove = board.teams[board.turnSwitch] | moveMask;
-	BoardMask hbOpp = board.teams[!board.turnSwitch];
-
-	// Number of win spots available after playing the move
-	return Util::BitCount64(BoardMask::GetWinMask(hbSelfAfterMove) & ~hbOpp);
 }
 
 std::string Eval::EvalToString(int eval, int addedDepth) {

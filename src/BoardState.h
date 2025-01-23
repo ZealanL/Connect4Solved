@@ -3,8 +3,10 @@
 #include "Framework.h"
 #include "Util.h"
 
-constexpr int BOARD_SIZE_X = 7, BOARD_SIZE_Y = 6;
-constexpr int CONNECT_WIN_AMOUNT = 4;
+constexpr int BOARD_SIZE_X = 7, BOARD_SIZE_Y = 6; // Size of the board
+constexpr int CONNECT_WIN_AMOUNT = 4; // Number of connections in a row to win
+
+static_assert(MAX(BOARD_SIZE_X, BOARD_SIZE_Y) <= 8, "Board size can't exceed 8 width or height");
 
 struct BoardMask {
 	union {
