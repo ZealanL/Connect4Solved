@@ -31,15 +31,6 @@
 #include <numeric>
 
 #ifdef _MSC_VER
-#include <intrin.h>
-#define BITCOUNT64 __popcnt64
-#define BITCOUNT32 __popcnt
-#else
-#define BITCOUNT64 __builtin_popcountll
-#define BITCOUNT32 __builtin_popcount
-#endif
-
-#ifdef _MSC_VER
 // Disable annoying truncation warnings on MSVC
 #pragma warning(disable: 4305 4244 4267)
 #endif
@@ -68,7 +59,7 @@
 }
 
 // Release-mode assertion
-#define RASSERT(cond, msg) { if (!(cond)) { ERR_CLOSE("Condition failed: \"" #cond "\": " msg); } } 
+#define RASSERT(cond, msg) { if (!(cond)) { ERR_CLOSE("Condition failed: \"" #cond "\": " << msg); } } 
 
 #ifndef NDEBUG 
 #define ASSERT RASSERT

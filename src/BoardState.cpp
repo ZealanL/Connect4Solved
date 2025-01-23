@@ -20,7 +20,7 @@ std::ostream& operator<<(std::ostream& stream, const BoardState& boardState) {
 		stream << '|' << std::endl;
 	}
 	for (int i = 0; i < BOARD_SIZE_X; i++)
-		stream << '=' << i;
+		stream << '=' << (i + 1);
 	stream << '=' << std::endl;
 	stream << "}";
 	return stream;

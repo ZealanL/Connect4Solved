@@ -8,8 +8,9 @@ constexpr int WIN_MIN_VALUE = 90000;
 
 namespace Eval {
 	void Init();
-	int EvalBoard(const BoardState& state, bool winOnly);
-	int EvalMove(const BoardState& state, int move);
+	bool IsWonAfterMove(const BoardState& board);
+	int EvalBoard(const BoardState& board, bool winOnly, BoardMask validMoveMask);
+	int EvalMove(const BoardState& board, BoardMask moveMask);
 
 	std::string EvalToString(int eval, int addedDepth);
 }

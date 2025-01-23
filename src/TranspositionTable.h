@@ -10,10 +10,9 @@ struct TranspositionTable {
 		uint64_t fullHash;
 		int eval;
 		uint16_t depthRemaining;
-		uint8_t bestMove;
 		uint64_t time;
 
-#ifdef TEST_HASH_COLLISION
+#if TEST_HASH_COLLISION
 		BoardMask teams[2];
 #endif
 
@@ -67,7 +66,7 @@ struct TranspositionTable {
 		Reset();
 	}
 
-	uint64_t HashBoard(const BoardState& board) {
+	static uint64_t HashBoard(const BoardState& board) {
 		// TODO: Not sure how good this is
 		constexpr uint64_t GIANT_PRIME = 8494297527100746157;
 		return board.teams[0].val64 * GIANT_PRIME + board.teams[1].val64;

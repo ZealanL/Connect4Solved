@@ -1,5 +1,7 @@
 #include "Eval.h"
 
+#include "Util.h"
+
 constexpr int CENTERED_MARGIN_X = MAX(1, BOARD_SIZE_X / 4);
 constexpr int VERY_CENTERED_MARGIN_X = MAX(2, BOARD_SIZE_X / 3);
 
@@ -97,41 +99,51 @@ void Eval::Init() {
 	LOG(" > Generated per-pos win states");
 }
 
-int EvalPosition(const BoardMask& hfState) {
-	return
-		CENTERED_WEIGHT * BITCOUNT64(hfState & g_CenterMask) +
-		VERY_CENTERED_WEIGHT * BITCOUNT64(hfState & g_VeryCenterMask)
-		;
-}
+bool Eval::IsWonAfterMove(const BoardState& board) {
+	BoardMask movedTeam = board.teams[!board.turnSwitch];
 
-int Eval::EvalBoard(const BoardState& state, bool winOnly) {
+	for (auto winState : g_WinStates) 
+		if (Util::BitCount64(winState & movedTeam) == CONNECT_WIN_AMOUNT)
+			return true;
 	
-	BoardMask hbSelf = state.teams[!state.turnSwitch];
-	auto& winStates = g_WinStatesForPos[state.lastMoveX][state.lastMoveY];
-
-	for (int i = 0; i < MAX_WINS_PER_POS; i++) {
-		if (BITCOUNT64(hbSelf & winStates[i]) == CONNECT_WIN_AMOUNT)
-			return -WIN_BASE_VALUE;
-	}
-
-	if (winOnly) {
-		return 0;
-	} else {
-		return -EvalPosition(hbSelf);
-	}
+	return false;
 }
 
-int Eval::EvalMove(const BoardState& state, int move) {
-	BoardMask hbSelf = state.teams[state.turnSwitch];
-	auto& winStates = g_WinStatesForPos[move][state.GetNextY(move)];
+int EvalTeam(const BoardMask& hbSelf, const BoardMask& hbOpp) {
+	auto numOpenWins = Util::BitCount64(BoardMask::GetWinMask(hbSelf) & ~hbOpp);
+	auto numOpenOneMinuses = Util::BitCount64(BoardMask::GetWinMask(hbSelf, true) & ~hbOpp);
 
-	int eval = 0;
-	for (int i = 0; i < MAX_WINS_PER_POS; i++) {
-		int connectedAmount = BITCOUNT64(hbSelf & winStates[i]);
-		eval += connectedAmount;
+	return numOpenWins;
+}
+
+int EvalPosition(const BoardMask& hbSelf, const BoardMask& hbOpp) {
+	return EvalTeam(hbSelf, hbOpp) - EvalTeam(hbOpp, hbSelf);
+}
+
+int Eval::EvalBoard(const BoardState& board, bool winOnly, BoardMask validMoveMask) {
+	
+	auto winMask = board.GetWinMask(board.turnSwitch);
+	if (winMask & validMoveMask) {
+		// We can win next turn
+		return WIN_BASE_VALUE - 1;
 	}
 
-	return eval;
+	// Despite this seeming very useful, it doesnt' seem to help
+	auto oppWinMask = board.GetWinMask(!board.turnSwitch);
+	if (Util::BitCount64(oppWinMask & validMoveMask) > 1) {
+		// Opponent can win next turn because they have multiple mate threats
+		return -WIN_BASE_VALUE + 2;
+	}
+
+	return 0;
+}
+
+int Eval::EvalMove(const BoardState& board, BoardMask moveMask) {
+	BoardMask hbSelfAfterMove = board.teams[board.turnSwitch] | moveMask;
+	BoardMask hbOpp = board.teams[!board.turnSwitch];
+
+	// Number of win spots available after playing the move
+	return Util::BitCount64(BoardMask::GetWinMask(hbSelfAfterMove) & ~hbOpp);
 }
 
 std::string Eval::EvalToString(int eval, int addedDepth) {
