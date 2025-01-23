@@ -97,9 +97,12 @@ int MinMaxSearch(
 }
 
 int AlphaBetaSearch(
-	TranspositionTable& table, const BoardState& board, int depthRemaining,
+	TranspositionTable* table, const BoardState& board, int depthRemaining,
 	AccumSearchInfo& outInfo,
-	int alpha = -INT_MAX, int beta = INT_MAX, int depthElapsed = 0) {
+	int alpha = -WIN_MIN_VALUE, int beta = WIN_MIN_VALUE, int depthElapsed = 0) {
+
+	alpha = CLAMP(alpha, -WIN_MIN_VALUE, WIN_MIN_VALUE);
+	beta = CLAMP(beta, -WIN_MIN_VALUE, WIN_MIN_VALUE);
 
 	outInfo.totalSearched++;
 	BoardMask validMovesMask = board.GetValidMoveMask();
@@ -124,10 +127,10 @@ int AlphaBetaSearch(
 
 		if (oppWinNextMask) {
 			// If the opponent has a win next turn, we must play there
-			// This will prevent searching stupid moves that lose
+
 			validMovesMask &= oppWinNextMask;
 
-			if (Util::MultipleBitsSet(validMovesMask)) {
+			if (Util::MultipleBitsSet(validMovesMask) > 1) {
 				// Opponent has multiple winning moves next turn, we cannot stop them all
 				outInfo.totalWins++;
 				return -WIN_BASE_VALUE + 2;
@@ -160,23 +163,37 @@ int AlphaBetaSearch(
 			bool useTable = depthRemaining >= 4;
 			if (useTable) {
 				auto hash = TranspositionTable::HashBoard(nextBoard);
-				entry = table.Find(hash);
+				entry = table->Find(hash);
 				outInfo.totalTableSeaches++;
-				if (entry->fullHash == hash && entry->depthRemaining >= depthRemaining) {
+				if (entry->hash == hash && entry->depthRemaining >= depthRemaining) {
+
+#if TEST_HASH_COLLISION
+					if (entry->board != nextBoard) {
+						ERR_CLOSE(
+							"Hash collision (depthRemaining: " << depthRemaining << ")" << std::endl <<
+							(void*)hash << " != " << (void*)TranspositionTable::HashBoard(entry->board) << std::endl <<
+							"Our board: " << nextBoard << ", entry's board: " << entry->board
+						);
+					}
+#endif
+
 					// Use the table entry
 					nextEval = entry->eval;
 					outInfo.totalTableHits++;
 				} else {
-					entry->fullHash = hash;
+					entry->hash = hash;
 					entry->depthRemaining = depthRemaining;
-					entry->time = table.timeCounter;
+#if TEST_HASH_COLLISION
+					entry->board = nextBoard;
+#endif
 				}
 			}
 			if (nextEval == -INT_MAX) {
 				nextEval = -AlphaBetaSearch(table, nextBoard, depthRemaining - 1, outInfo, -beta, -alpha, depthElapsed + 1);
 
-				if (entry)
+				if (entry) {
 					entry->eval = nextEval;
+				}
 			}
 		} else {
 			// No possible wins within our depth
@@ -213,7 +230,7 @@ int AlphaBetaSearch(
 			BoardMask boardAfterMoving = hbSelf | singleMoveMask;
 			int moveRating = Util::BitCount64(BoardMask::GetWinMask(boardAfterMoving) & ~hbOpp);
 
-			ratedMoves[numMoves] = RatedMove{ 
+			ratedMoves[numMoves] = RatedMove{
 				singleMoveMask, moveRating
 			};
 			numMoves++;
@@ -249,8 +266,10 @@ int AlphaBetaSearch(
 		}
 	}
 
-	// For win counting
-	if (abs(bestEval) >= WIN_MIN_VALUE)
+	// Decay win values each recursion
+	// This will allow us to determine how many moves until victory
+	// It will also make the best move prefer losing later
+	if (abs(bestEval) > WIN_MIN_VALUE)
 		bestEval -= (bestEval > 0) ? 1 : -1;
 
 	return bestEval;
@@ -260,7 +279,7 @@ struct SearchResult {
 	int evals[BOARD_SIZE_X];
 };
 
-SearchResult Search(TranspositionTable& table, const BoardState& board, bool perft, double maxTime, bool log) {
+SearchResult Search(TranspositionTable* table, const BoardState& board, bool perft, double maxTime, bool log) {
 
 	SearchResult result = {};
 
@@ -356,7 +375,6 @@ SearchResult Search(TranspositionTable& table, const BoardState& board, bool per
 				abs(bestEval) >= WIN_MIN_VALUE || // We found a win, no further depth is needed
 				searchInfo.totalTruncated == 0 // We reached the maximum depth of the game, no further depth is needed
 				) {
-
 				break;
 			}
 		}
@@ -371,14 +389,14 @@ int main() {
 	BoardState board = {};
 
 	bool computerOnly = false;
-	double computerSearchTime = 3.f;
+	double computerSearchTime = 2.f;
 
-	auto table = TranspositionTable(100);
+	auto table = new TranspositionTable();
 
 	std::string movesStr = {};
 
 	while (true) {
-		LOG(board);
+		LOG("Board: " << board);
 		if (!movesStr.empty())
 			LOG("(Moves: " << movesStr << ")");
 

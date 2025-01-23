@@ -52,7 +52,7 @@
 #define WARN(s) LOG("WARNING: " << s)
 
 #define ERR_CLOSE(s) { \
-	std::string _errorStr = STR("FATAL ERROR: " << s); \
+	std::string _errorStr = STR(std::string(35, '-') << std::endl << "FATAL ERROR: " << s); \
 	LOG(_errorStr); \
 	throw std::runtime_error(_errorStr); \
 	exit(EXIT_FAILURE); \

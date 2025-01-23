@@ -65,7 +65,7 @@ struct BoardMask {
 			winMask |= fnLoopMask(mask, 7, -i, loopAmount);
 		}
 
-		return winMask;
+		return winMask & BoardMask::GetBoardMask();
 	}
 
 	static constexpr BoardMask GetBoardMask() {
@@ -157,6 +157,14 @@ struct BoardState {
 			DoMove(moveIndex);
 		}
 	
+	}
+
+	constexpr bool operator==(const BoardState& other) {
+		return teams[0] == other.teams[0] && teams[1] == other.teams[1] && turnSwitch == other.turnSwitch;
+	}
+
+	constexpr bool operator!=(const BoardState& other) {
+		return !(*this == other);
 	}
 
 	friend std::ostream& operator<<(std::ostream& stream, const BoardState& boardState);

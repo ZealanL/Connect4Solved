@@ -30,8 +30,22 @@ namespace Util {
 #endif
 	}
 
-	inline bool MultipleBitsSet(uint64_t val) {
+	constexpr bool MultipleBitsSet(uint64_t val) {
 		// From https://forum.arduino.cc/t/solved-easiest-way-to-check-if-more-than-one-bit-set-in-byte/669962/7
 		return (val & (val - 1)) != 0;
+	}
+
+	constexpr uint64_t FastHash(uint64_t val, bool alt = false) {
+		// https://github.com/aappleby/smhasher/blob/master/src/MurmurHash3.cpp
+
+		constexpr uint64_t CONST_1 = 0xff51afd7ed558ccd;
+		constexpr uint64_t CONST_2 = 0xc4ceb9fe1a85ec53;
+
+		val ^= val >> 33ull;
+		val *= alt ? CONST_2 : CONST_1;
+		val ^= val >> 33ull;
+		val *= alt ? CONST_1 : CONST_2;
+		val ^= val >> 33ull;
+		return val;
 	}
 }
