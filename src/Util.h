@@ -22,8 +22,9 @@ namespace Util {
 		return std::popcount(val);
 	}
 
+	// Returns the max value if there is no mask
 	constexpr uint64_t BitMaskToIndex(uint64_t mask) {
-		return std::countl_zero(mask);
+		return std::countr_zero(mask);
 	}
 
 	template<size_t MIN_BITS>

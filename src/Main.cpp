@@ -20,8 +20,7 @@ int main(int argc, char* argv[]) {
 	Eval::Init();
 
 	BoardState board = {};
-
-	bool computerOnly = false;
+	bool computerOnly = true;
 
 	auto table = new TranspositionTable();
 
@@ -59,59 +58,43 @@ int main(int argc, char* argv[]) {
 			return EXIT_SUCCESS;
 		}
 
+		int chosenMoveIndex;
 		if (!humansTurn) {
-			auto searchResult = Search::Search(table, board, false, true);
+			auto searchResult = Search::Search(table, board, true);
 
-			int chosenMoveIndex;
-			{
-				// Pick the move with the highest eval
-				// If multiple moves have the best evla, pick one at random
-
-				Value maxEval = VALUE_INVALID;
-				for (int i = 0; i < BOARD_SIZE_X; i++)
-					maxEval = MAX(maxEval, searchResult.evals[i]);
-
-				std::vector<int> equallyBestMoves;
-				for (int i = 0; i < BOARD_SIZE_X; i++)
-					if (searchResult.evals[i] == maxEval)
-						equallyBestMoves.push_back(i);
-				RASSERT(!equallyBestMoves.empty(), "Failed to find any best moves");
-
-				chosenMoveIndex = equallyBestMoves[rand() % equallyBestMoves.size()];
-			}
-
+			int idx = Util::BitMaskToIndex(searchResult.move);
+			chosenMoveIndex = idx / 8;
 			LOG("Playing move: " << chosenMoveIndex + 1);
-			movesStr += '1' + chosenMoveIndex;
-			board.DoMove(chosenMoveIndex);
 		} else {
 			// Human can move
 			while (true) {
 				std::cout << "Your move index: ";
 				std::string line;
 				std::getline(std::cin, line);
-				int moveIndex;
 				bool invalid = false;
 				try {
-					moveIndex = std::stoi(line) - 1;
+					chosenMoveIndex = std::stoi(line) - 1;
 				} catch (std::exception& e) {
 					LOG("Invalid move (cannot parse)");
 					continue;
 				}
 
-				if (moveIndex < 0 || moveIndex >= BOARD_SIZE_X) {
+				if (chosenMoveIndex < 0 || chosenMoveIndex >= BOARD_SIZE_X) {
 					LOG("Invalid move (out of range)");
 					continue;
 				}
 
-				if (!board.IsMoveValid(moveIndex)) {
+				if (!board.IsMoveValid(chosenMoveIndex)) {
 					LOG("Invalid move (column full)");
 					continue;
 				}
-				movesStr += '1' + moveIndex;
-				board.DoMove(moveIndex);
+
 				break;
 			}
 		}
+
+		movesStr += '1' + chosenMoveIndex;
+		board.DoMove(chosenMoveIndex);
 	}
 
 	return EXIT_SUCCESS;

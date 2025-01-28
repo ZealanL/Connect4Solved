@@ -27,7 +27,7 @@ uint64_t Search::PerfTest(const BoardState& board, int depth, int depthElapsed) 
 
 Value Search::AlphaBetaSearch(
 	TranspositionTable* table, const BoardState& board,
-	AccumSearchInfo& outInfo, SearchCache cache) {
+	SearchInfo& outInfo, SearchCache cache) {
 
 	outInfo.totalSearched++;
 	BoardMask validMovesMask = board.GetValidMoveMask();
@@ -50,7 +50,7 @@ Value Search::AlphaBetaSearch(
 	auto moveItr = MoveIterator(validMovesMask);
 	int numMoves = 0;
 	while (BoardMask singleMoveMask = moveItr.GetNext()) {
-		int moveRating = Eval::RateMove(hbSelf, hbOpp, selfWinMask, singleMoveMask);
+		int moveRating = Eval::RateMove(hbSelf, hbOpp, selfWinMask, singleMoveMask, board.moveCount);
 
 		ratedMoves[numMoves] = RatedMove{ singleMoveMask, moveRating };
 		numMoves++;
@@ -75,14 +75,13 @@ Value Search::AlphaBetaSearch(
 
 	for (size_t i = 0; i < numMoves; i++) {
 		Value nextEval = VALUE_INVALID;
-		auto singleMoveMask = ratedMoves[i].move;
+		auto move = ratedMoves[i].move;
 
 		TranspositionTable::Entry* entry = NULL;
 
 		BoardState nextBoard = board;
-		nextBoard.FillMove(singleMoveMask);
+		nextBoard.FillMove(move);
 
-		
 		uint64_t hash = TranspositionTable::HashBoard(nextBoard);
 		entry = table->Find(hash);
 
@@ -116,113 +115,78 @@ Value Search::AlphaBetaSearch(
 			nextEval.depth++;
 		}
 
-		if (nextEval >= cache.beta) {
+		if (nextEval >= cache.max) {
 			bestEval = nextEval;
+			if (cache.depthElapsed == 0)
+				outInfo.bestMove = move;
+
 			outInfo.totalPruned++;
 			break;
 		}
 
 		if (nextEval > bestEval) {
 			bestEval = nextEval;
-			if (nextEval > cache.alpha)
-				cache.alpha = nextEval;
+			if (nextEval > cache.min)
+				cache.min = nextEval;
+
+			if (cache.depthElapsed == 0)
+				outInfo.bestMove = move;
 		}
 	}
 
 	return bestEval;
 }
 
-SearchResult Search::Search(TranspositionTable* table, const BoardState& board, bool perft, bool log) {
+SearchResult Search::Search(TranspositionTable* table, const BoardState& board, bool log) {
+	Timer timer = {};
+	BoardMask validMoves = board.GetValidMoveMask();
 
-	SearchResult result = {};
+	RASSERT(validMoves, "No valid moves in the position");
 
-	Timer overallTimer = {};
-	double lastMoveSearchTime = 0;
-
-	BoardMask winMoveMask = board.GetValidMoveMask() & board.winMasks[board.turnSwitch];
+	BoardMask winMoveMask = validMoves & board.winMasks[board.turnSwitch];
 	if (winMoveMask) {
 		// We have a winning move this turn
 
 		if (log)
-			LOG("[Playing winning move(s)]");
+			LOG("[Playing winning move]");
 
 		auto moveItr = MoveIterator(winMoveMask);
 		for (int i = 0; i < BOARD_SIZE_X; i++) {
 			if (!board.IsMoveValid(i)) {
-				result.evals[i] = VALUE_INVALID;
 				continue;
 			}
 
 			BoardMask moveMask = 0;
 			moveMask.Set(i, board.GetNextY(i), true);
 
-			if (winMoveMask & moveMask) {
-				result.evals[i] = { 1, 1 };
-			} else {
-				result.evals[i] = 0;
-			}
+			if (winMoveMask & moveMask)
+				return { moveMask, 1 };
 		}
 
-		return result;
+		ERR_CLOSE("Thought we had winning move, but never found it")
+	}
+	
+	SearchInfo searchInfo = {};
+	Value eval = AlphaBetaSearch(table, board, searchInfo);
+	double timeElapsed = timer.Elapsed();
+
+	BoardMask bestMove = searchInfo.bestMove;
+	if (!bestMove) {
+		auto itr = MoveIterator(validMoves);
+		bestMove = itr.GetNext();
 	}
 
-	if (perft) {
-		for (int curDepth = 0; curDepth < 100; curDepth++) {
-			Timer perftTimer = {};
-			uint64_t perft = PerfTest(board, curDepth);
-			if (log) {
-				LOG(
-					"perft " << curDepth << ": " << perft <<
-					", moves/sec: " << Util::NumToStr(perft / perftTimer.Elapsed())
-				);
-			}
-		}
-	} else {
-
-		std::vector<Value> newEvals = {};
-
-		Timer curTimer = {};
-		int newBestMoveIndex = 0;
-		Value bestEval = VALUE_INVALID;
-		AccumSearchInfo searchInfo = {};
-		for (int i = 0; i < BOARD_SIZE_X; i++) {
-
-			if (!board.IsMoveValid(i)) {
-				newEvals.push_back(VALUE_INVALID);
-				result.evals[i] = VALUE_INVALID;
-				continue;
-			}
-
-			BoardState nextBoard = board;
-			nextBoard.DoMove(i);
-
-			Timer moveTimer = {};
-			Value eval = -AlphaBetaSearch(table, nextBoard, searchInfo);
-			lastMoveSearchTime = moveTimer.Elapsed();
-			newEvals.push_back(eval);
-
-			if (eval > bestEval) {
-				bestEval = eval;
-				bestEval.depth++;
-				newBestMoveIndex = i;
-			}
-		}
-		uint64_t movesPerSecond = searchInfo.totalSearched / MAX(curTimer.Elapsed(), 1e-7);
-
-		RASSERT(newEvals.size() == BOARD_SIZE_X, "Bad eval amount");
-		std::copy(newEvals.begin(), newEvals.end(), result.evals);
-
-		double timeElapsed = overallTimer.Elapsed();
-		if (log) {
-			LOG(
-				"Eval: " << bestEval <<
-				", searched: " << Util::NumToStr(searchInfo.totalSearched) << "/" << Util::NumToStr(searchInfo.totalPruned) <<
-				", moves/sec: " << Util::NumToStr(movesPerSecond) <<
-				", winfrac: " << searchInfo.GetWinFrac() <<
-				", tablefrac: " << searchInfo.GetTableHitFrac()
-			);
-		}
+	uint64_t movesPerSecond = searchInfo.totalSearched / timeElapsed;
+		
+	if (log) {
+		LOG(
+			"Eval: " << eval <<
+			", searched: " << Util::NumToStr(searchInfo.totalSearched) << "/" << Util::NumToStr(searchInfo.totalPruned) <<
+			", moves/sec: " << Util::NumToStr(movesPerSecond) <<
+			", winfrac: " << searchInfo.GetWinFrac() <<
+			", tablefrac: " << searchInfo.GetTableHitFrac()
+		);
 	}
 
-	return result;
+	return { bestMove, eval };
 }

@@ -51,7 +51,7 @@ void Testing::TestMoveEval(TranspositionTable* table, int numSamples) {
 	Timer timer = {};
 	table->Reset();
 
-	constexpr int DEPTHS[] = { 18, 25 };
+	constexpr int DEPTHS[] = { 18, 22, 25 };
 
 	for (int depth : DEPTHS) {
 		size_t numFound = 0;
@@ -60,7 +60,7 @@ void Testing::TestMoveEval(TranspositionTable* table, int numSamples) {
 			BoardState board = Testing::GeneratePosition(depth);
 
 			// Do normal search to assess eval
-			AccumSearchInfo searchInfo = {};
+			SearchInfo searchInfo = {};
 			Value eval = Search::AlphaBetaSearch(table, board, searchInfo);
 
 			// Find highest rated move
@@ -72,7 +72,8 @@ void Testing::TestMoveEval(TranspositionTable* table, int numSamples) {
 					board.teams[board.turnSwitch],
 					board.teams[!board.turnSwitch],
 					board.winMasks[board.turnSwitch],
-					move
+					move,
+					board.moveCount
 				);
 
 				if (moveEval > bestMoveEval) {
@@ -99,16 +100,16 @@ void Testing::TestMoveEval(TranspositionTable* table, int numSamples) {
 
 void Testing::TestEfficiency(TranspositionTable* table, int numSamples) {
 	LOG("Running overall efficiency test...");
-	srand(time(0));
+	srand(0);
 	Timer timer = {};
 	table->Reset();
 
 	constexpr float GOOD_BRANCHING_FACTOR = 1.6f;
 
-	constexpr int DEPTHS[] = { 18, 25 };
+	constexpr int DEPTHS[] = { 18, 22, 25 };
 
 	for (int depth : DEPTHS) {
-		AccumSearchInfo searchInfo = {};
+		SearchInfo searchInfo = {};
 
 		int movesRemaining = MAX(BOARD_CELL_COUNT - depth  - 2, 1);
 		uint64_t targetSearchCount = pow(GOOD_BRANCHING_FACTOR, movesRemaining);
@@ -122,7 +123,7 @@ void Testing::TestEfficiency(TranspositionTable* table, int numSamples) {
 
 		uint64_t avgSearched = searchInfo.totalSearched / numSamples;
 		double scoreFrac = (double)targetSearchCount / (double)avgSearched;
-		LOG(" > Depth " << depth << ", score: " << scoreFrac << ", avg searched: " << Util::NumToStr(avgSearched) << ", table hit frac : " << searchInfo.GetTableHitFrac());
+		LOG(" > Depth " << depth << ", score: " << scoreFrac << ", avg searched: " << Util::NumToStr(avgSearched) << ", table hit frac: " << searchInfo.GetTableHitFrac());
 	}
 
 	LOG(" Done in " << timer.Elapsed() << "s");

@@ -7,7 +7,9 @@
 
 #include "Util.h"
 
-struct AccumSearchInfo {
+struct SearchInfo {
+	BoardMask bestMove = 0;
+
 	uint64_t totalSearched = 0;
 	uint64_t totalTableSeaches = 0;
 	uint64_t totalTableHits = 0;
@@ -24,26 +26,27 @@ struct AccumSearchInfo {
 };
 
 struct SearchCache {
-	Value alpha = -1;
-	Value beta = 1;
+	Value min = -1;
+	Value max = 1;
 	uint8_t depthElapsed = 0;
 
 	SearchCache ProgressDepth() {
 		return SearchCache{
-			-beta,
-			-alpha,
+			-max,
+			-min,
 			(uint8_t)(depthElapsed + 1)
 		};
 	}
 };
 
 struct SearchResult {
-	Value evals[BOARD_SIZE_X];
+	BoardMask move;
+	Value eval;
 };
 
 namespace Search {
 	uint64_t PerfTest(const BoardState& board, int depth, int depthElapsed = 0);
-	Value AlphaBetaSearch(TranspositionTable* table, const BoardState& board, AccumSearchInfo& outInfo, SearchCache cache = {});
+	Value AlphaBetaSearch(TranspositionTable* table, const BoardState& board, SearchInfo& outInfo, SearchCache cache = {});
 
-	SearchResult Search(TranspositionTable* table, const BoardState& board, bool perft, bool log);
+	SearchResult Search(TranspositionTable* table, const BoardState& board, bool log);
 }

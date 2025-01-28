@@ -139,24 +139,46 @@ Value Eval::EvalValidMoves(BoardMask hbSelf, BoardMask hbOpp, BoardMask selfWinM
 	return VALUE_INVALID;
 }
 
-int Eval::RateMove(BoardMask hbSelf, BoardMask hbOpp, BoardMask selfWinMask, BoardMask moveMask) {
+int Eval::RateMove(BoardMask hbSelf, BoardMask hbOpp, BoardMask selfWinMask, BoardMask moveMask, uint8_t moveCount) {
 	BoardMask hbSelfMoved = hbSelf | moveMask;
+	
 	int threatsEval = Util::BitCount64(selfWinMask);
 
-	bool makesStackSelf = (moveMask & (hbSelf << 1)) != 0;
-	bool makesStackOpp = (moveMask & (hbOpp << 1)) != 0;
+	constexpr auto fnBumpMask = [](BoardMask hb, BoardMask move, int shift) -> BoardMask {
+		return move & ((shift > 0) ? (hb << shift) : (hb >> -shift));
+	};
 
-	bool makesRowSelf = ((moveMask & (hbSelf << 8)) | (moveMask & (hbSelf >> 8))) != 0;
-	bool makesRowOpp = ((moveMask & (hbOpp << 8)) | (moveMask & (hbOpp >> 8))) != 0;
+	constexpr auto fnBumpMask2 = [fnBumpMask](BoardMask hb, BoardMask move, int shift) -> BoardMask {
+		return (fnBumpMask(hb, move, shift) | fnBumpMask(hb, move, -shift));
+	};
+
+	// Check if this stacks on top of another piece
+	bool makesStackSelf = fnBumpMask(hbSelf, moveMask, 1) != 0;
+	bool makesStackOpp = fnBumpMask(hbOpp, moveMask, 1) != 0;
+
+	// Check if this makes a row with another piece
+	int makesRowSelf = Util::BitCount64(fnBumpMask2(hbSelf, moveMask, 8));
+	int makesRowOpp = Util::BitCount64(fnBumpMask2(hbOpp, moveMask, 8));
+
+	// Check if this makes a diagonal row with another piece
+	//int makesD1RowSelf = Util::BitCount64(fnBumpMask2(hbSelf, moveMask, 7) | fnBumpMask2(hbSelf, moveMask, 9));
+	//int makesD1RowOpp = Util::BitCount64(fnBumpMask2(hbOpp, moveMask, 7) | fnBumpMask2(hbOpp, moveMask, 9));
+
+	// Measure how off-center the move is
+	int moveIdx = Util::BitMaskToIndex(moveMask);
+	int moveX = moveIdx / 8;
+	int moveY = moveIdx % 8;
+	int offCenterAmount = abs(moveX - BOARD_SIZE_X / 2) + abs(moveY - BOARD_SIZE_Y / 2);
 
 	return
-		threatsEval * 2048
+		threatsEval * 512
 
-		+ (int)makesStackSelf * 8
-		- (int)makesStackOpp * 4
+		+ (int)makesStackSelf * 256
+		+ (int)makesStackOpp * (128 + 64)
 
-		- (int)makesRowSelf * 2
-		+ (int)makesRowOpp;
+		+ (int)makesRowSelf * (256 + 128)
+
+		- offCenterAmount * 256
 		;
 		
 }

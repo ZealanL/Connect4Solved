@@ -7,7 +7,7 @@ constexpr int BOARD_SIZE_X = 7, BOARD_SIZE_Y = 6; // Size of the board
 constexpr int CONNECT_WIN_AMOUNT = 4; // Number of connections in a row to win
 constexpr int BOARD_CELL_COUNT = BOARD_SIZE_X * BOARD_SIZE_Y; // Number of connections in a row to win
 
-static_assert(MAX(BOARD_SIZE_X, BOARD_SIZE_Y) < 8, "Board size must be less than 8 width or 7");
+static_assert(MAX(BOARD_SIZE_X, BOARD_SIZE_Y) < 8, "Board size must be less than 7 width or height");
 static_assert(CONNECT_WIN_AMOUNT >= 3, "Connect win amount must be at least 3");
 
 struct BoardMask {
