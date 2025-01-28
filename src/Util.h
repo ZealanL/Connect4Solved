@@ -1,10 +1,6 @@
 #pragma once
 #include "Framework.h"
 
-#ifdef _MSC_VER
-#include <intrin.h>
-#endif
-
 namespace Util {
 	inline std::string NumToStr(int64_t num) {
 		std::stringstream stream;
@@ -22,12 +18,12 @@ namespace Util {
 		return stream.str();
 	}
 
-	inline uint64_t BitCount64(uint64_t val) {
-#ifdef _MSC_VER
-		return __popcnt64(val);
-#else
-		return __builtin_popcountll(val);
-#endif
+	constexpr uint64_t BitCount64(uint64_t val) {
+		return std::popcount(val);
+	}
+
+	constexpr uint64_t BitMaskToIndex(uint64_t mask) {
+		return std::countl_zero(mask);
 	}
 
 	template<size_t MIN_BITS>

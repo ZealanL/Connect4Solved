@@ -5,30 +5,27 @@
 
 constexpr int BOARD_SIZE_X = 7, BOARD_SIZE_Y = 6; // Size of the board
 constexpr int CONNECT_WIN_AMOUNT = 4; // Number of connections in a row to win
-constexpr int BOARD_NUM_SQUARES = BOARD_SIZE_X * BOARD_SIZE_Y; // Number of connections in a row to win
+constexpr int BOARD_CELL_COUNT = BOARD_SIZE_X * BOARD_SIZE_Y; // Number of connections in a row to win
 
 static_assert(MAX(BOARD_SIZE_X, BOARD_SIZE_Y) < 8, "Board size must be less than 8 width or 7");
 static_assert(CONNECT_WIN_AMOUNT >= 3, "Connect win amount must be at least 3");
 
 struct BoardMask {
-	union {
-		uint64_t val64;
-		uint8_t columns[BOARD_SIZE_X];
-	};
+	uint64_t val64;
 
 	constexpr BoardMask(uint64_t val64 = 0) : val64(val64) {}
 
 	constexpr bool Get(int x, int y) const {
-		return (columns[x] & (1 << y)) > 0;
+		return (val64 & (1ull << (y + x * 8))) != 0;
 	}
 
 	constexpr void Set(int x, int y, bool val) {
-		uint8_t& column = columns[x];
-		if (val) {
-			columns[x] |= 1 << y;
-		} else {
-			columns[x] &= ~(1 << y);
-		}
+		uint64_t bitMask = (1ull << (y + x * 8));
+		val64 |= bitMask;
+	}
+
+	constexpr uint8_t GetColumn(int x) {
+		return (uint8_t)(val64 >> (x * 8));
 	}
 
 	constexpr operator uint64_t() const { return val64; }
@@ -108,7 +105,7 @@ struct BoardMask {
 		return MakeWinMask(*this);
 	}
 
-	static constexpr BoardMask GetBoardMask() {
+	constexpr static BoardMask _GetBoardMask() {
 		BoardMask result = {};
 		for (int x = 0; x < BOARD_SIZE_X; x++)
 			for (int y = 0; y < BOARD_SIZE_Y; y++)
@@ -116,10 +113,20 @@ struct BoardMask {
 		return result;
 	}
 
-	static constexpr BoardMask GetBottomMask() {
+	constexpr static BoardMask GetBoardMask() {
+		constexpr BoardMask result = _GetBoardMask();
+		return result;
+	}
+
+	constexpr static BoardMask _GetBottomMask() {
 		BoardMask result = {};
 		for (int x = 0; x < BOARD_SIZE_X; x++)
 			result.Set(x, 0, true);
+		return result;
+	}
+
+	static constexpr BoardMask GetBottomMask() {
+		constexpr BoardMask result = _GetBottomMask();
 		return result;
 	}
 };
@@ -162,7 +169,7 @@ struct BoardState {
 	}
 
 	uint8_t GetNextY(int x) const {
-		uint8_t column = teams[0].columns[x] | teams[1].columns[x];
+		uint8_t column = GetCombinedMask().GetColumn(x);
 
 		return Util::BitCount64(column);
 	}
@@ -177,7 +184,7 @@ struct BoardState {
 	// Doesn't change the board for invalid moves
 	void DoMove(int x) {
 		uint8_t y = GetNextY(x);
-		teams[turnSwitch].columns[x] |= 1 << y;
+		teams[turnSwitch].Set(x, y, true);
 		winMasks[turnSwitch] = teams[turnSwitch].MakeWinMask();
 		turnSwitch = !turnSwitch;
 		moveCount++;

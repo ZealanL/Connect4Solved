@@ -10,3 +10,5 @@
 # Anything starting with 3 underscores
 ___*
 /Intel® VTune™ Profiler Results
+*.bin
+/.idea

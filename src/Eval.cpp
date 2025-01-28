@@ -139,9 +139,9 @@ Value Eval::EvalValidMoves(BoardMask hbSelf, BoardMask hbOpp, BoardMask selfWinM
 	return VALUE_INVALID;
 }
 
-int Eval::RateMove(BoardMask hbSelf, BoardMask hbOpp, BoardMask moveMask) {
+int Eval::RateMove(BoardMask hbSelf, BoardMask hbOpp, BoardMask selfWinMask, BoardMask moveMask) {
 	BoardMask hbSelfMoved = hbSelf | moveMask;
-	int threatsEval = Util::BitCount64(hbSelfMoved.MakeWinMask());
+	int threatsEval = Util::BitCount64(selfWinMask);
 
 	bool makesStackSelf = (moveMask & (hbSelf << 1)) != 0;
 	bool makesStackOpp = (moveMask & (hbOpp << 1)) != 0;

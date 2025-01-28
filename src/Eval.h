@@ -42,5 +42,5 @@ namespace Eval {
 	// Returns the eval if win/loss/draw, else returns VALUE_INVALID 
 	// Modifies validMovesMask if moves are forced
 	Value EvalValidMoves(BoardMask hbSelf, BoardMask hbOpp, BoardMask selfWinMask, BoardMask oppWinMask, BoardMask& validMovesMask);
-	int RateMove(BoardMask hbSelf, BoardMask hbOpp, BoardMask moveMask);
+	int RateMove(BoardMask hbSelf, BoardMask hbOpp, BoardMask selfWinMask, BoardMask moveMask);
 }
