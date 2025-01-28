@@ -9,21 +9,11 @@
 
 #include "Util.h"
 
-uint64_t RandU64() {
-	thread_local static auto engine = std::default_random_engine();
-	thread_local static auto distribution = std::uniform_int_distribution<unsigned long long>(
-		std::numeric_limits<std::uint64_t>::min(),
-		std::numeric_limits<std::uint64_t>::max()
-	);
-
-	return distribution(engine);
-}
-
 uint64_t PerfTest(const BoardState& board, int depth, int depthElapsed = 0) {
 	BoardMask validMovesMask = board.GetValidMoveMask();
 
 	if (depth > 1) {
-		BoardMask winMask = board.GetWinMask(board.turnSwitch);
+		BoardMask winMask = board.winMasks[board.turnSwitch];
 
 		uint64_t count = 0;
 		auto moveItr = MoveIterator(validMovesMask);
@@ -50,7 +40,6 @@ struct AccumSearchInfo {
 	uint64_t totalTableHits = 0;
 	uint64_t totalWins = 0;
 	uint64_t totalPruned = 0; // Times we pruned due to beta
-	uint64_t totalTruncated = 0; // Times we truncated due to running out of depth
 
 	double GetTableHitFrac() const {
 		return (totalTableSeaches > 0) ? (double)totalTableHits / (double)totalTableSeaches : 0;
@@ -59,147 +48,101 @@ struct AccumSearchInfo {
 	double GetWinFrac() const {
 		return (double)totalWins / (double)totalSearched;
 	}
-
-	double GetDoneFrac() const {
-		return CLAMP(1 - ((double)totalTruncated / (double)totalSearched), 0, 1);
-	}
 };
 
-int MinMaxSearch(
-	const BoardState& board, int depthRemaining, AccumSearchInfo& outInfo, int depthElapsed = 0) {
-
-	outInfo.totalSearched++;
-	BoardMask validMovesMask = board.GetValidMoveMask();
-	BoardMask winMask = board.GetWinMask(board.turnSwitch);
-
-	int max = -INT_MAX;
-	auto moveItr = MoveIterator(validMovesMask);
-	while (BoardMask singleMoveMask = moveItr.GetNext()) {
-		int nextEval;
-
-		if (winMask & singleMoveMask) {
-			// Move wins the game
-			outInfo.totalWins++;
-			nextEval = WIN_BASE_VALUE - 1;
-		} else if (depthRemaining > 1) {
-			BoardState nextBoard = board;
-			nextBoard.FillMove(singleMoveMask);
-
-			nextEval = -MinMaxSearch(nextBoard, depthRemaining - 1, outInfo, depthElapsed + 1);
-		} else {
-			// No possible wins within our depth
-			nextEval = 0;
-			outInfo.totalTruncated++;
-		}
-		max = MAX(max, nextEval);
-	}
-	return max;
-}
-
-int AlphaBetaSearch(
-	TranspositionTable* table, const BoardState& board, int depthRemaining,
+Value AlphaBetaSearch(
+	TranspositionTable* table, const BoardState& board,
 	AccumSearchInfo& outInfo,
-	int alpha = -WIN_MIN_VALUE, int beta = WIN_MIN_VALUE, int depthElapsed = 0) {
-
-	alpha = CLAMP(alpha, -WIN_MIN_VALUE, WIN_MIN_VALUE);
-	beta = CLAMP(beta, -WIN_MIN_VALUE, WIN_MIN_VALUE);
+	Value alpha = -1, Value beta = 1, int depthElapsed = 0) {
 
 	outInfo.totalSearched++;
 	BoardMask validMovesMask = board.GetValidMoveMask();
 	BoardMask hbSelf = board.teams[board.turnSwitch];
 	BoardMask hbOpp = board.teams[!board.turnSwitch];
+	BoardMask selfWinMask = board.winMasks[board.turnSwitch];
+	BoardMask oppWinMask = board.winMasks[!board.turnSwitch];
 
-	BoardMask winMask = BoardMask::GetWinMask(hbSelf);
+	Value bestEval = Eval::EvalValidMoves(hbSelf, hbOpp, selfWinMask, oppWinMask, validMovesMask);
+	if (bestEval != VALUE_INVALID) {
+		outInfo.totalWins++;
+		return bestEval;
+	}
 
-	{ // Win/lose/draw checking
+	struct RatedMove {
+		BoardMask move;
+		int eval;
+	};
+	RatedMove ratedMoves[BOARD_SIZE_X];
+	auto moveItr = MoveIterator(validMovesMask);
+	int numMoves = 0;
+	while (BoardMask singleMoveMask = moveItr.GetNext()) {
+		int moveRating = Eval::RateMove(hbSelf, hbOpp, singleMoveMask); 
 
-		if (!validMovesMask)
-			return 0; // Draw
+		ratedMoves[numMoves] = RatedMove{ singleMoveMask, moveRating };
+		numMoves++;
+	}
 
-		if (validMovesMask & winMask) {
-			// We can win this turn
-			outInfo.totalWins++;
-			return WIN_BASE_VALUE - 1;
-		}
+	// Insertion sort the moves
+	for (size_t i = 1; i < numMoves; i++) {
+		for (size_t j = i; j > 0;) {
+			RatedMove prev = ratedMoves[j - 1];
+			RatedMove cur = ratedMoves[j];
 
-		BoardMask oppWinMask = BoardMask::GetWinMask(hbOpp);
-		BoardMask oppWinNextMask = oppWinMask & validMovesMask;
-
-		if (oppWinNextMask) {
-			// If the opponent has a win next turn, we must play there
-
-			validMovesMask &= oppWinNextMask;
-
-			if (Util::MultipleBitsSet(validMovesMask) > 1) {
-				// Opponent has multiple winning moves next turn, we cannot stop them all
-				outInfo.totalWins++;
-				return -WIN_BASE_VALUE + 2;
+			if (cur.eval > prev.eval) {
+				// Swap
+				ratedMoves[j - 1] = cur;
+				ratedMoves[j] = prev;
+				j--;
+			} else {
+				break;
 			}
-		}
-
-		// Everywhere below a winning square for the opponent
-		BoardMask belowOppWin = (oppWinMask >> 1);
-
-		// We can't play there
-		validMovesMask &= ~belowOppWin;
-
-		if (!validMovesMask) {
-			outInfo.totalWins++;
-			return -WIN_BASE_VALUE + 2; // No valid moves (and we already know it isnt a draw)
 		}
 	}
 
-	int bestEval = -INT_MAX;
+	for (size_t i = 0; i < numMoves; i++) {
+		Value nextEval = VALUE_INVALID;
+		auto singleMoveMask = ratedMoves[i].move;
 
-	// Returns true if we should stop searching
-	auto fnProcessMove = [&](BoardMask singleMoveMask) -> bool {
-		int nextEval = -INT_MAX;
+		BoardState nextBoard = board;
+		nextBoard.FillMove(singleMoveMask);
 
-		if (depthRemaining > 1) {
-			BoardState nextBoard = board;
-			nextBoard.FillMove(singleMoveMask);
-
-			TranspositionTable::Entry* entry = NULL;
-			bool useTable = depthRemaining >= 4;
-			if (useTable) {
-				auto hash = TranspositionTable::HashBoard(nextBoard);
-				entry = table->Find(hash);
-				outInfo.totalTableSeaches++;
-				if (entry->hash == hash && entry->depthRemaining >= depthRemaining) {
+		TranspositionTable::Entry* entry = NULL;
+		auto hash = TranspositionTable::HashBoard(nextBoard);
+		entry = table->Find(hash);
+		outInfo.totalTableSeaches++;
+		if (entry->hash == hash) {
 
 #if TEST_HASH_COLLISION
-					if (entry->board != nextBoard) {
-						ERR_CLOSE(
-							"Hash collision (depthRemaining: " << depthRemaining << ")" << std::endl <<
-							(void*)hash << " != " << (void*)TranspositionTable::HashBoard(entry->board) << std::endl <<
-							"Our board: " << nextBoard << ", entry's board: " << entry->board
-						);
-					}
+			if (entry->board != nextBoard) {
+				ERR_CLOSE(
+					"Hash collision (depthRemaining: " << depthRemaining << ")" << std::endl <<
+					(void*)hash << " != " << (void*)TranspositionTable::HashBoard(entry->board) << std::endl <<
+					"Our board: " << nextBoard << ", entry's board: " << entry->board
+				);
+			}
 #endif
 
-					// Use the table entry
-					nextEval = entry->eval;
-					outInfo.totalTableHits++;
-				} else {
-					entry->hash = hash;
-					entry->depthRemaining = depthRemaining;
-#if TEST_HASH_COLLISION
-					entry->board = nextBoard;
-#endif
-				}
-			}
-			if (nextEval == -INT_MAX) {
-				nextEval = -AlphaBetaSearch(table, nextBoard, depthRemaining - 1, outInfo, -beta, -alpha, depthElapsed + 1);
-
-				if (entry) {
-					entry->eval = nextEval;
-				}
-			}
+			// Use the table entry
+			nextEval = entry->eval;
+			nextEval.depth++;
+			outInfo.totalTableHits++;
 		} else {
-			// No possible wins within our depth
-			// Actually evaluate the position
-			outInfo.totalTruncated++;
-			nextEval = 0;
+			entry->hash = hash;
+#if TEST_HASH_COLLISION
+			entry->board = nextBoard;
+#endif
+		}
+		if (nextEval == VALUE_INVALID) {
+			nextEval = -AlphaBetaSearch(table, nextBoard, outInfo, -beta, -alpha, depthElapsed + 1);
+			if (entry)
+				entry->eval = nextEval;
+			nextEval.depth++;
+		}
+
+		if (nextEval >= beta) {
+			bestEval = nextEval;
+			outInfo.totalPruned++;
+			break;
 		}
 
 		if (nextEval > bestEval) {
@@ -207,102 +150,40 @@ int AlphaBetaSearch(
 			if (nextEval > alpha)
 				alpha = nextEval;
 		}
-
-		if (bestEval >= beta) {
-			outInfo.totalPruned++;
-			return true;
-		}
-
-		return false;
-	};
-
-	bool sortMoves = depthRemaining >= 4;
-
-	if (sortMoves) {
-		struct RatedMove {
-			BoardMask move;
-			int eval;
-		};
-		RatedMove ratedMoves[BOARD_SIZE_X];
-		auto moveItr = MoveIterator(validMovesMask);
-		int numMoves = 0;
-		while (BoardMask singleMoveMask = moveItr.GetNext()) {
-			BoardMask boardAfterMoving = hbSelf | singleMoveMask;
-			int moveRating = Util::BitCount64(BoardMask::GetWinMask(boardAfterMoving) & ~hbOpp);
-
-			ratedMoves[numMoves] = RatedMove{
-				singleMoveMask, moveRating
-			};
-			numMoves++;
-		}
-
-		// Insertion sort the moves
-		for (size_t i = 1; i < numMoves; i++) {
-			for (size_t j = i; j > 0;) {
-				RatedMove prev = ratedMoves[j - 1];
-				RatedMove cur = ratedMoves[j];
-
-				if (cur.eval > prev.eval) {
-					// Swap
-					ratedMoves[j - 1] = cur;
-					ratedMoves[j] = prev;
-					j--;
-				} else {
-					break;
-				}
-			}
-		}
-
-		for (size_t i = 0; i < numMoves; i++) {
-			if (fnProcessMove(ratedMoves[i].move))
-				break;
-		}
-
-	} else {
-		auto moveItr = MoveIterator(validMovesMask);
-		while (BoardMask singleMoveMask = moveItr.GetNext()) {
-			if (fnProcessMove(singleMoveMask))
-				break;
-		}
 	}
 
-	// Decay win values each recursion
-	// This will allow us to determine how many moves until victory
-	// It will also make the best move prefer losing later
-	if (abs(bestEval) > WIN_MIN_VALUE)
-		bestEval -= (bestEval > 0) ? 1 : -1;
 
 	return bestEval;
 }
 
 struct SearchResult {
-	int evals[BOARD_SIZE_X];
+	Value evals[BOARD_SIZE_X];
 };
 
-SearchResult Search(TranspositionTable* table, const BoardState& board, bool perft, double maxTime, bool log) {
+SearchResult Search(TranspositionTable* table, const BoardState& board, bool perft, bool log) {
 
 	SearchResult result = {};
 
 	Timer overallTimer = {};
 	double lastMoveSearchTime = 0;
 
-	BoardMask winMoveMask = board.GetValidMoveMask() & board.GetWinMask(board.turnSwitch);
+	BoardMask winMoveMask = board.GetValidMoveMask() & board.winMasks[board.turnSwitch];
 	if (winMoveMask) {
 		// We have a winning move this turn
 
-		LOG("[Playing winning move]");
+		LOG("[Playing winning move(s)]");
 
 		for (int i = 0; i < BOARD_SIZE_X; i++) {
 			if (!board.IsMoveValid(i)) {
-				result.evals[i] = -INT_MAX;
+				result.evals[i] = VALUE_INVALID;
 				continue;
 			}
 
 			BoardMask moveMask = 0;
 			moveMask.Set(i, board.GetNextY(i), true);
 
-			if (board.GetWinMask(board.turnSwitch) & moveMask) {
-				result.evals[i] = WIN_BASE_VALUE - 1;
+			if (winMoveMask & moveMask) {
+				result.evals[i] = { 1, 1 };
 			} else {
 				result.evals[i] = 0;
 			}
@@ -311,73 +192,58 @@ SearchResult Search(TranspositionTable* table, const BoardState& board, bool per
 		return result;
 	}
 
-	for (int curDepth = 1;; curDepth++) {
-
-		if (perft) {
+	if (perft) {
+		for (int curDepth = 0; curDepth < 100; curDepth++) {
 			Timer perftTimer = {};
 			uint64_t perft = PerfTest(board, curDepth);
 			LOG(
 				"perft " << curDepth << ": " << perft <<
 				", moves/sec: " << Util::NumToStr(perft / perftTimer.Elapsed())
 			);
-		} else {
+		}
+	} else {
 
-			std::vector<int> newEvals = {};
+		std::vector<Value> newEvals = {};
 
-			Timer curTimer = {};
-			int newBestMoveIndex = 0;
-			int bestEval = -INT_MAX;
-			AccumSearchInfo searchInfo = {};
-			for (int i = 0; i < BOARD_SIZE_X; i++) {
+		Timer curTimer = {};
+		int newBestMoveIndex = 0;
+		Value bestEval = VALUE_INVALID;
+		AccumSearchInfo searchInfo = {};
+		for (int i = 0; i < BOARD_SIZE_X; i++) {
 
-				if (!board.IsMoveValid(i)) {
-					newEvals.push_back(-INT_MAX);
-					result.evals[i] = -INT_MAX;
-					continue;
-				}
-
-				BoardState nextBoard = board;
-				nextBoard.DoMove(i);
-
-				Timer moveTimer = {};
-				int eval = -AlphaBetaSearch(table, nextBoard, curDepth - 1, searchInfo, -INT_MAX, INT_MAX);
-				lastMoveSearchTime = moveTimer.Elapsed();
-
-				newEvals.push_back(eval);
-
-				if (eval > bestEval) {
-					bestEval = eval;
-					newBestMoveIndex = i;
-				}
-
-				if (overallTimer.Elapsed() + lastMoveSearchTime >= maxTime)
-					return result;
+			if (!board.IsMoveValid(i)) {
+				newEvals.push_back(VALUE_INVALID);
+				result.evals[i] = VALUE_INVALID;
+				continue;
 			}
-			uint64_t movesPerSecond = searchInfo.totalSearched / MAX(curTimer.Elapsed(), 1e-7);
 
-			RASSERT(newEvals.size() == BOARD_SIZE_X, "Bad eval amount");
-			std::copy(newEvals.begin(), newEvals.end(), result.evals);
+			BoardState nextBoard = board;
+			nextBoard.DoMove(i);
 
-			int approxPercentDone = (int)(searchInfo.GetDoneFrac() * 100);
+			Timer moveTimer = {};
+			Value eval = -AlphaBetaSearch(table, nextBoard, searchInfo);
+			lastMoveSearchTime = moveTimer.Elapsed();
+			newEvals.push_back(eval);
 
-			double timeElapsed = overallTimer.Elapsed();
-			LOG(
-				"[~" << std::setw(3) << std::setfill(' ') << approxPercentDone << "%] " <<
-				"Depth: " << curDepth <<
-				", eval: " << Eval::EvalToString(bestEval, 1) <<
-				", searched: " << Util::NumToStr(searchInfo.totalSearched) << "/" << Util::NumToStr(searchInfo.totalPruned) <<
-				", moves/sec: " << Util::NumToStr(movesPerSecond) <<
-				", winfrac: " << searchInfo.GetWinFrac() <<
-				", tablefrac: " << searchInfo.GetTableHitFrac()
-			);
-
-			if (
-				abs(bestEval) >= WIN_MIN_VALUE || // We found a win, no further depth is needed
-				searchInfo.totalTruncated == 0 // We reached the maximum depth of the game, no further depth is needed
-				) {
-				break;
+			if (eval > bestEval) {
+				bestEval = eval;
+				bestEval.depth++;
+				newBestMoveIndex = i;
 			}
 		}
+		uint64_t movesPerSecond = searchInfo.totalSearched / MAX(curTimer.Elapsed(), 1e-7);
+
+		RASSERT(newEvals.size() == BOARD_SIZE_X, "Bad eval amount");
+		std::copy(newEvals.begin(), newEvals.end(), result.evals);
+
+		double timeElapsed = overallTimer.Elapsed();
+		LOG(
+			"Eval: " << bestEval <<
+			", searched: " << Util::NumToStr(searchInfo.totalSearched) << "/" << Util::NumToStr(searchInfo.totalPruned) <<
+			", moves/sec: " << Util::NumToStr(movesPerSecond) <<
+			", winfrac: " << searchInfo.GetWinFrac() <<
+			", tablefrac: " << searchInfo.GetTableHitFrac()
+		);
 	}
 
 	return result;
@@ -388,8 +254,7 @@ int main() {
 
 	BoardState board = {};
 
-	bool computerOnly = false;
-	double computerSearchTime = 2.f;
+	bool computerOnly = true;
 
 	auto table = new TranspositionTable();
 
@@ -423,14 +288,14 @@ int main() {
 		}
 
 		if (!humansTurn) {
-			auto searchResult = Search(table, board, false, computerSearchTime, true);
+			auto searchResult = Search(table, board, false, true);
 
 			int chosenMoveIndex;
 			{
 				// Pick the move with the highest eval
 				// If multiple moves have the best evla, pick one at random
 
-				int maxEval = -INT_MAX;
+				Value maxEval = VALUE_INVALID;
 				for (int i = 0; i < BOARD_SIZE_X; i++)
 					maxEval = MAX(maxEval, searchResult.evals[i]);
 

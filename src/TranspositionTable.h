@@ -1,5 +1,6 @@
 #pragma once
 #include "BoardState.h"
+#include "Eval.h"
 
 #define TEST_HASH_COLLISION 0
 #define PRINT_HASHES 0
@@ -7,8 +8,7 @@
 struct TranspositionTable {
 	struct __declspec(align(1)) Entry {
 		uint64_t hash;
-		int eval;
-		uint16_t depthRemaining;
+		Value eval;
 
 #if TEST_HASH_COLLISION
 		BoardState board;
@@ -23,8 +23,8 @@ struct TranspositionTable {
 		}
 	};
 
-	constexpr static int SIZE = 1 << 25 /* Power of two for maximum "%" speed */;
-	constexpr static int SIZE_MBS = (sizeof(Entry) * SIZE) / 1'000'000;
+	constexpr static size_t SIZE = 1 << 25 /* Power of two for maximum "%" speed */;
+	constexpr static size_t SIZE_MBS = (sizeof(Entry) * SIZE) / 1'000'000;
 
 	////////////////////////////////////////////////////////////////////////
 

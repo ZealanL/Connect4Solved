@@ -30,13 +30,16 @@ namespace Util {
 #endif
 	}
 
-	constexpr bool MultipleBitsSet(uint64_t val) {
-		// From https://forum.arduino.cc/t/solved-easiest-way-to-check-if-more-than-one-bit-set-in-byte/669962/7
-		return (val & (val - 1)) != 0;
+	template<size_t MIN_BITS>
+	constexpr bool HasMinBitsSet(uint64_t val) {
+		// Ref: https://nimrod.blog/posts/algorithms-behind-popcount/
+		for (size_t i = 0; i < (MIN_BITS - 1); i++)
+			val &= val - 1;
+		return val;
 	}
 
 	constexpr uint64_t FastHash(uint64_t val, bool alt = false) {
-		// https://github.com/aappleby/smhasher/blob/master/src/MurmurHash3.cpp
+		// Ref: https://github.com/aappleby/smhasher/blob/master/src/MurmurHash3.cpp
 
 		constexpr uint64_t CONST_1 = 0xff51afd7ed558ccd;
 		constexpr uint64_t CONST_2 = 0xc4ceb9fe1a85ec53;

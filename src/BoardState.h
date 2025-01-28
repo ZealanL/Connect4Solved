@@ -5,8 +5,10 @@
 
 constexpr int BOARD_SIZE_X = 7, BOARD_SIZE_Y = 6; // Size of the board
 constexpr int CONNECT_WIN_AMOUNT = 4; // Number of connections in a row to win
+constexpr int BOARD_NUM_SQUARES = BOARD_SIZE_X * BOARD_SIZE_Y; // Number of connections in a row to win
 
-static_assert(MAX(BOARD_SIZE_X, BOARD_SIZE_Y) <= 8, "Board size can't exceed 8 width or height");
+static_assert(MAX(BOARD_SIZE_X, BOARD_SIZE_Y) < 8, "Board size must be less than 8 width or 7");
+static_assert(CONNECT_WIN_AMOUNT >= 3, "Connect win amount must be at least 3");
 
 struct BoardMask {
 	union {
@@ -32,40 +34,78 @@ struct BoardMask {
 	constexpr operator uint64_t() const { return val64; }
 	constexpr operator uint64_t&() { return val64; }
 
-	static constexpr BoardMask GetWinMask(BoardMask mask, bool oneMinus = false) {
-		int loopAmount = oneMinus ? CONNECT_WIN_AMOUNT - 1 : CONNECT_WIN_AMOUNT;
+	constexpr static BoardMask MakeWinMask(BoardMask mask) {
+		BoardMask winMask = 0;
 
-		constexpr auto fnLoopMask = [](BoardMask& mask, int shift, int startShift, int loopAmount) -> BoardMask {
+		if constexpr (CONNECT_WIN_AMOUNT == 4) {
+			// Fast 4-specific solution based on https://github.com/PascalPons/connect4/blob/master/Position.hpp#L300
 
-			constexpr auto fnShiftMask = [](BoardMask& mask, int shift) -> BoardMask {
-				return (shift < 0) ? (mask >> -shift) : (mask << shift);
+			// Vertical
+			// Only needs to check upward since pieces can't float
+			winMask |= (mask << 1) & (mask << 2) & (mask << 3);
+
+			constexpr auto fnShiftMask = [](BoardMask mask, int amount) -> BoardMask {
+				if (amount > 0) {
+					return mask << amount;
+				} else {
+					return mask >> -amount;
+				}
 			};
 
-			BoardMask result = ~0ull;
+			constexpr auto fnCheckDir = [fnShiftMask](BoardMask mask, int dx, int dy) -> BoardMask {
+				int shift = dx * 8 + dy;
+				BoardMask twoFilled = fnShiftMask(mask, shift) & fnShiftMask(mask, shift * 2);
+				return (twoFilled & fnShiftMask(mask, -shift)) | (twoFilled & fnShiftMask(mask, shift * 3));
+			};
 
-			for (int shiftItr = 0; shiftItr < loopAmount; shiftItr++) {
-				int shiftScale = shiftItr + startShift;
-				if (shiftScale == 0)
-					continue;
-				result &= fnShiftMask(mask, shift * shiftScale);
+			winMask |= fnCheckDir(mask, 1, 0);
+			winMask |= fnCheckDir(mask, -1, 0);
+
+			winMask |= fnCheckDir(mask, -1, -1);
+			winMask |= fnCheckDir(mask, -1, 1);
+			winMask |= fnCheckDir(mask, 1, -1);
+			winMask |= fnCheckDir(mask, 1, 1);
+
+			return winMask & BoardMask::GetBoardMask();
+		} else {
+			// Slower generic solution
+			// TODO: This is very slow because it does unnecessary computations
+
+			constexpr auto fnLoopMask = [](BoardMask mask, int shift, int startShift, int loopAmount) -> BoardMask {
+
+				constexpr auto fnShiftMask = [](BoardMask mask, int shift) -> BoardMask {
+					return (shift < 0) ? (mask >> -shift) : (mask << shift);
+				};
+
+				BoardMask result = ~0ull;
+
+				for (int shiftItr = 0; shiftItr < loopAmount; shiftItr++) {
+					int shiftScale = shiftItr + startShift;
+					if (shiftScale == 0)
+						continue;
+					result &= fnShiftMask(mask, shift * shiftScale);
+				}
+				return result;
+			};
+
+			// Vertical
+			winMask |= fnLoopMask(mask, 1, 0, CONNECT_WIN_AMOUNT);
+
+			for (int i = 0; i < CONNECT_WIN_AMOUNT; i++) {
+				// Horizontal
+				winMask |= fnLoopMask(mask, 8, -i, CONNECT_WIN_AMOUNT);
+
+				// Diag 1 & 2
+				winMask |= fnLoopMask(mask, 9, -i, CONNECT_WIN_AMOUNT);
+				winMask |= fnLoopMask(mask, 7, -i, CONNECT_WIN_AMOUNT);
 			}
-			return result;
-		};
-
-		BoardMask winMask = 0;
-		// Vertical
-		winMask |= fnLoopMask(mask, 1, 0, loopAmount);
-
-		for (int i = 0; i < CONNECT_WIN_AMOUNT; i++) {
-			// Horizontal
-			winMask |= fnLoopMask(mask, 8, -i, loopAmount);
-
-			// Diag 1 & 2
-			winMask |= fnLoopMask(mask, 9, -i, loopAmount);
-			winMask |= fnLoopMask(mask, 7, -i, loopAmount);
 		}
 
-		return winMask & BoardMask::GetBoardMask();
+		return winMask & GetBoardMask();
+	}
+
+	constexpr BoardMask MakeWinMask() const {
+		return MakeWinMask(*this);
 	}
 
 	static constexpr BoardMask GetBoardMask() {
@@ -99,7 +139,9 @@ struct MoveIterator {
 
 struct BoardState {
 	bool turnSwitch = false;
+	int8_t moveCount = 0;
 	BoardMask teams[2];
+	BoardMask winMasks[2];
 
 	constexpr BoardState(BoardMask team0 = 0, BoardMask team1 = 0) {
 		teams[0] = team0;
@@ -119,10 +161,6 @@ struct BoardState {
 		return ((combined << 1) | BoardMask::GetBottomMask()) & BoardMask::GetBoardMask() & ~combined;
 	}
 
-	BoardMask GetWinMask(bool team, bool oneMinus = false) const {
-		return BoardMask::GetWinMask(teams[team], oneMinus);
-	}
-
 	uint8_t GetNextY(int x) const {
 		uint8_t column = teams[0].columns[x] | teams[1].columns[x];
 
@@ -131,14 +169,18 @@ struct BoardState {
 
 	void FillMove(BoardMask moveMask) {
 		teams[turnSwitch] |= moveMask;
+		winMasks[turnSwitch] = teams[turnSwitch].MakeWinMask();
 		turnSwitch = !turnSwitch;
+		moveCount++;
 	}
 
 	// Doesn't change the board for invalid moves
 	void DoMove(int x) {
 		uint8_t y = GetNextY(x);
 		teams[turnSwitch].columns[x] |= 1 << y;
+		winMasks[turnSwitch] = teams[turnSwitch].MakeWinMask();
 		turnSwitch = !turnSwitch;
+		moveCount++;
 	}
 
 	// Moves should be column digits starting at 1

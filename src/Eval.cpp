@@ -98,17 +98,65 @@ bool Eval::IsWonAfterMove(const BoardState& board) {
 	return false;
 }
 
-std::string Eval::EvalToString(int eval, int addedDepth) {
-	int absEval = abs(eval);
+Value Eval::EvalValidMoves(BoardMask hbSelf, BoardMask hbOpp, BoardMask selfWinMask, BoardMask oppWinMask, BoardMask& validMovesMask) {
+	// Ref: https://github.com/PascalPons/connect4/blob/master/Position.hpp#L188
 
-	if (absEval >= WIN_MIN_VALUE) {
-		int movesRemaining = WIN_BASE_VALUE - absEval + addedDepth;
-		if (movesRemaining == 0) {
-			return eval > 0 ? "WON" : "LOST";
-		} else {
-			return STR((eval > 0 ? "WIN" : "LOSE") << "(" << movesRemaining << ")");
+	BoardMask oppWinNextMask = oppWinMask & validMovesMask;
+
+	{ // Detect win in 2
+		if (oppWinNextMask) {
+			// If the opponent has a win next turn, we must play there to block
+
+			if (Util::HasMinBitsSet<2>(oppWinNextMask)) {
+				// Opponent has multiple winning moves next turn, we can only stop 1 :(
+				return { -1, 2 };
+			}
+
+			validMovesMask = oppWinNextMask;
 		}
-	} else {
-		return STR((eval > 0 ? "+" : "") << eval);
+
+		// Everywhere below a winning square for the opponent
+		BoardMask belowOppWin = (oppWinMask >> 1);
+
+		// We can't play there
+		validMovesMask &= ~belowOppWin;
+
+		if (!validMovesMask) {
+			// No valid moves, we are just gonna lose
+			return { -1, 2 };
+		}
 	}
+
+	{ // Detect draw in 2
+		
+		BoardMask unplayedSpots = ~(hbSelf | hbOpp) & BoardMask::GetBoardMask();
+		if (!Util::HasMinBitsSet<3>(unplayedSpots)) {
+			// Only two moves left, and since we haven't found a win in 2 moves, it's a draw
+			return { 0, 2 };
+		}
+	}
+
+	return VALUE_INVALID;
+}
+
+int Eval::RateMove(BoardMask hbSelf, BoardMask hbOpp, BoardMask moveMask) {
+	BoardMask hbSelfMoved = hbSelf | moveMask;
+	int threatsEval = Util::BitCount64(hbSelfMoved.MakeWinMask());
+
+	bool makesStackSelf = (moveMask & (hbSelf << 1)) != 0;
+	bool makesStackOpp = (moveMask & (hbOpp << 1)) != 0;
+
+	bool makesRowSelf = ((moveMask & (hbSelf << 8)) | (moveMask & (hbSelf >> 8))) != 0;
+	bool makesRowOpp = ((moveMask & (hbOpp << 8)) | (moveMask & (hbOpp >> 8))) != 0;
+
+	return
+		threatsEval * 2048
+
+		+ (int)makesStackSelf * 8
+		- (int)makesStackOpp * 4
+
+		- (int)makesRowSelf * 2
+		+ (int)makesRowOpp;
+		;
+		
 }
