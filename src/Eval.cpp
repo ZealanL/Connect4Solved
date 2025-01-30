@@ -142,7 +142,7 @@ Value Eval::EvalValidMoves(BoardMask hbSelf, BoardMask hbOpp, BoardMask selfWinM
 int Eval::RateMove(BoardMask hbSelf, BoardMask hbOpp, BoardMask selfWinMask, BoardMask moveMask, uint8_t moveCount) {
 	BoardMask hbSelfMoved = hbSelf | moveMask;
 	
-	int threatsEval = Util::BitCount64(selfWinMask);
+	int threatsEval = Util::BitCount64(hbSelfMoved.MakeWinMask() & ~hbOpp);
 
 	constexpr auto fnBumpMask = [](BoardMask hb, BoardMask move, int shift) -> BoardMask {
 		return move & ((shift > 0) ? (hb << shift) : (hb >> -shift));
@@ -171,14 +171,9 @@ int Eval::RateMove(BoardMask hbSelf, BoardMask hbOpp, BoardMask selfWinMask, Boa
 	int offCenterAmount = abs(moveX - BOARD_SIZE_X / 2) + abs(moveY - BOARD_SIZE_Y / 2);
 
 	return
-		threatsEval * 512
-
-		+ (int)makesStackSelf * 256
-		+ (int)makesStackOpp * (128 + 64)
-
-		+ (int)makesRowSelf * (256 + 128)
-
-		- offCenterAmount * 256
+		threatsEval * 2048
+		- offCenterAmount * 128
+		+ (int)makesStackSelf
 		;
 		
 }

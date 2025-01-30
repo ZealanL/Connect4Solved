@@ -49,10 +49,11 @@ Value Search::AlphaBetaSearch(
 	RatedMove ratedMoves[BOARD_SIZE_X];
 	auto moveItr = MoveIterator(validMovesMask);
 	int numMoves = 0;
-	while (BoardMask singleMoveMask = moveItr.GetNext()) {
-		int moveRating = Eval::RateMove(hbSelf, hbOpp, selfWinMask, singleMoveMask, board.moveCount);
+	while (BoardMask move = moveItr.GetNext()) {
 
-		ratedMoves[numMoves] = RatedMove{ singleMoveMask, moveRating };
+		int moveRating = Eval::RateMove(hbSelf, hbOpp, selfWinMask, move, board.moveCount);
+
+		ratedMoves[numMoves] = RatedMove{ move, moveRating };
 		numMoves++;
 	}
 
@@ -77,13 +78,11 @@ Value Search::AlphaBetaSearch(
 		Value nextEval = VALUE_INVALID;
 		auto move = ratedMoves[i].move;
 
-		TranspositionTable::Entry* entry = NULL;
-
 		BoardState nextBoard = board;
 		nextBoard.FillMove(move);
 
 		uint64_t hash = TranspositionTable::HashBoard(nextBoard);
-		entry = table->Find(hash);
+		TranspositionTable::Entry* entry = table->Find(hash);
 
 		outInfo.totalTableSeaches++;
 		if (entry->hash == hash) {
@@ -102,16 +101,14 @@ Value Search::AlphaBetaSearch(
 			nextEval = entry->eval;
 			nextEval.depth++;
 			outInfo.totalTableHits++;
-		} else {
+		} else { // No table hit
+			nextEval = -AlphaBetaSearch(table, nextBoard, outInfo, cache.ProgressDepth());
+
+			entry->eval = nextEval;
 			entry->hash = hash;
 #if TEST_HASH_COLLISION
 			entry->board = nextBoard;
 #endif
-		}
-
-		if (nextEval == VALUE_INVALID) { // No table hit
-			nextEval = -AlphaBetaSearch(table, nextBoard, outInfo, cache.ProgressDepth());
-			entry->eval = nextEval;
 			nextEval.depth++;
 		}
 
@@ -126,6 +123,7 @@ Value Search::AlphaBetaSearch(
 
 		if (nextEval > bestEval) {
 			bestEval = nextEval;
+
 			if (nextEval > cache.min)
 				cache.min = nextEval;
 
@@ -163,7 +161,7 @@ SearchResult Search::Search(TranspositionTable* table, const BoardState& board, 
 				return { moveMask, 1 };
 		}
 
-		ERR_CLOSE("Thought we had winning move, but never found it")
+		ERR_CLOSE("Thought we had winning move, but never found it");
 	}
 	
 	SearchInfo searchInfo = {};
@@ -184,7 +182,8 @@ SearchResult Search::Search(TranspositionTable* table, const BoardState& board, 
 			", searched: " << Util::NumToStr(searchInfo.totalSearched) << "/" << Util::NumToStr(searchInfo.totalPruned) <<
 			", moves/sec: " << Util::NumToStr(movesPerSecond) <<
 			", winfrac: " << searchInfo.GetWinFrac() <<
-			", tablefrac: " << searchInfo.GetTableHitFrac()
+			", tablehitfrac: " << searchInfo.GetTableHitFrac() <<
+			", tablefillfrac: " << table->GetFillFrac()
 		);
 	}
 

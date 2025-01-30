@@ -181,13 +181,11 @@ struct BoardState {
 		moveCount++;
 	}
 
-	// Doesn't change the board for invalid moves
 	void DoMove(int x) {
 		uint8_t y = GetNextY(x);
-		teams[turnSwitch].Set(x, y, true);
-		winMasks[turnSwitch] = teams[turnSwitch].MakeWinMask();
-		turnSwitch = !turnSwitch;
-		moveCount++;
+		BoardMask moveMask = 0;
+		moveMask.Set(x, GetNextY(x), true);
+		FillMove(moveMask);
 	}
 
 	// Moves should be column digits starting at 1

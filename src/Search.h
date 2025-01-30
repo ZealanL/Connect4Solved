@@ -40,7 +40,7 @@ struct SearchCache {
 };
 
 struct SearchResult {
-	BoardMask move;
+	BoardMask move = 0;
 	Value eval;
 };
 

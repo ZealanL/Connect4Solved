@@ -91,7 +91,7 @@ void Testing::TestMoveEval(TranspositionTable* table, int numSamples) {
 				numFound++;
 		}
 
-		float frac = (double)numFound / (double)numSamples;
+		double frac = (double)numFound / (double)numSamples;
 		LOG(" > Depth " << depth << ", guessed " << (frac * 100) << "%");
 	}
 
@@ -104,9 +104,9 @@ void Testing::TestEfficiency(TranspositionTable* table, int numSamples) {
 	Timer timer = {};
 	table->Reset();
 
-	constexpr float GOOD_BRANCHING_FACTOR = 1.6f;
+	constexpr double GOOD_BRANCHING_FACTOR = 1.6f;
 
-	constexpr int DEPTHS[] = { 18, 22, 25 };
+	constexpr int DEPTHS[] = { 16, 20, 25 };
 
 	for (int depth : DEPTHS) {
 		SearchInfo searchInfo = {};

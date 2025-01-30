@@ -58,4 +58,11 @@ struct TranspositionTable {
 
 		return Get(hash);
 	}
+
+	double GetFillFrac() const {
+		size_t numFilled = 0;
+		for (size_t i = 0; i < SIZE; i++)
+			numFilled += entries[i].IsValid();
+		return (double)numFilled / (double)SIZE;
+	}
 };
