@@ -99,11 +99,12 @@ bool Eval::IsWonAfterMove(const BoardState& board) {
 }
 
 Value Eval::EvalValidMoves(BoardMask hbSelf, BoardMask hbOpp, BoardMask selfWinMask, BoardMask oppWinMask, BoardMask& validMovesMask) {
-	// Ref: https://github.com/PascalPons/connect4/blob/master/Position.hpp#L188
-
+	
 	BoardMask oppWinNextMask = oppWinMask & validMovesMask;
 
-	{ // Detect win in 2
+	// Ref: https://github.com/PascalPons/connect4/blob/master/Position.hpp#L188
+
+	{ // Detect loss in 2
 		if (oppWinNextMask) {
 			// If the opponent has a win next turn, we must play there to block
 
@@ -128,7 +129,7 @@ Value Eval::EvalValidMoves(BoardMask hbSelf, BoardMask hbOpp, BoardMask selfWinM
 	}
 
 	{ // Detect draw in 2
-		
+
 		BoardMask unplayedSpots = ~(hbSelf | hbOpp) & BoardMask::GetBoardMask();
 		if (!Util::HasMinBitsSet<3>(unplayedSpots)) {
 			// Only two moves left, and since we haven't found a win in 2 moves, it's a draw
@@ -139,10 +140,10 @@ Value Eval::EvalValidMoves(BoardMask hbSelf, BoardMask hbOpp, BoardMask selfWinM
 	return VALUE_INVALID;
 }
 
-int Eval::RateMove(BoardMask hbSelf, BoardMask hbOpp, BoardMask selfWinMask, BoardMask moveMask, uint8_t moveCount) {
+float Eval::RateMove(BoardMask hbSelf, BoardMask hbOpp, BoardMask selfWinMask, BoardMask moveMask, uint8_t moveCount) {
 	BoardMask hbSelfMoved = hbSelf | moveMask;
 	
-	int threatsEval = Util::BitCount64(hbSelfMoved.MakeWinMask() & ~hbOpp);
+	float threatsEval = Util::BitCount64(hbSelfMoved.MakeWinMask() & ~hbOpp);
 
 	constexpr auto fnBumpMask = [](BoardMask hb, BoardMask move, int shift) -> BoardMask {
 		return move & ((shift > 0) ? (hb << shift) : (hb >> -shift));
@@ -157,8 +158,8 @@ int Eval::RateMove(BoardMask hbSelf, BoardMask hbOpp, BoardMask selfWinMask, Boa
 	bool makesStackOpp = fnBumpMask(hbOpp, moveMask, 1) != 0;
 
 	// Check if this makes a row with another piece
-	int makesRowSelf = Util::BitCount64(fnBumpMask2(hbSelf, moveMask, 8));
-	int makesRowOpp = Util::BitCount64(fnBumpMask2(hbOpp, moveMask, 8));
+	float makesRowSelf = Util::BitCount64(fnBumpMask2(hbSelf, moveMask, 8));
+	float makesRowOpp = Util::BitCount64(fnBumpMask2(hbOpp, moveMask, 8));
 
 	// Check if this makes a diagonal row with another piece
 	//int makesD1RowSelf = Util::BitCount64(fnBumpMask2(hbSelf, moveMask, 7) | fnBumpMask2(hbSelf, moveMask, 9));
@@ -168,12 +169,13 @@ int Eval::RateMove(BoardMask hbSelf, BoardMask hbOpp, BoardMask selfWinMask, Boa
 	int moveIdx = Util::BitMaskToIndex(moveMask);
 	int moveX = moveIdx / 8;
 	int moveY = moveIdx % 8;
-	int offCenterAmount = abs(moveX - BOARD_SIZE_X / 2) + abs(moveY - BOARD_SIZE_Y / 2);
+	float offCenterAmountX = abs(moveX - BOARD_SIZE_X / 2.f);
+	float offCenterAmountY = abs(moveY - BOARD_SIZE_Y / 2.f);
 
 	return
 		threatsEval * 2048
-		- offCenterAmount * 128
-		+ (int)makesStackSelf
+		+ makesStackSelf * 256
+		- offCenterAmountX * 128
 		;
 		
 }

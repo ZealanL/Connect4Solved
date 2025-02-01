@@ -37,21 +37,53 @@ Value Search::AlphaBetaSearch(
 	BoardMask oppWinMask = board.winMasks[!board.turnSwitch];
 
 	Value bestEval = Eval::EvalValidMoves(hbSelf, hbOpp, selfWinMask, oppWinMask, validMovesMask);
-	if (bestEval != VALUE_INVALID) {
-		outInfo.totalWins++;
+	if (bestEval != VALUE_INVALID)
 		return bestEval;
-	}
 
 	struct RatedMove {
 		BoardMask move;
-		int eval;
+		float eval;
 	};
 	RatedMove ratedMoves[BOARD_SIZE_X];
-	auto moveItr = MoveIterator(validMovesMask);
 	int numMoves = 0;
+
+	uint64_t hash = TranspositionTable::HashBoard(board);
+	TranspositionTable::Entry* entryPtr = table->Find(hash);
+	TranspositionTable::Entry entry = *entryPtr;
+	outInfo.totalTableSeaches++;
+
+	BoardMask tableBestMove = 0;
+
+	if (entry.hash == hash) {
+		// We have a matching entropy
+
+		tableBestMove = entry.bestMove;
+
+		if (entry.eval >= cache.max) {
+			// Exceeds maximum, this is a cut mode
+			return entry.eval;
+		} else if (!entry.isCutNode) { // It's exact
+			return entry.eval;
+		}
+
+#if DEBUG_TRANSPOSITION_TABLE
+		if (entry.board != board) {
+			ERR_CLOSE(
+				"Hash collision (depth: " << (int)cache.depthElapsed << ")" << std::endl <<
+				(void*)hash << " != " << (void*)TranspositionTable::HashBoard(entry.board) << std::endl <<
+				"Our next board: " << board << ", entry's next board: " << entry.board
+			);
+		}
+#endif
+	}
+
+	auto moveItr = MoveIterator(validMovesMask);
 	while (BoardMask move = moveItr.GetNext()) {
 
-		int moveRating = Eval::RateMove(hbSelf, hbOpp, selfWinMask, move, board.moveCount);
+		float moveRating = Eval::RateMove(hbSelf, hbOpp, selfWinMask, move, board.moveCount);
+
+		if (tableBestMove == move)
+			moveRating = FLT_MAX;
 
 		ratedMoves[numMoves] = RatedMove{ move, moveRating };
 		numMoves++;
@@ -74,6 +106,8 @@ Value Search::AlphaBetaSearch(
 		}
 	}
 
+	bool hitCutoff = false;
+	BoardMask bestMove = 0;
 	for (size_t i = 0; i < numMoves; i++) {
 		Value nextEval = VALUE_INVALID;
 		auto move = ratedMoves[i].move;
@@ -81,43 +115,16 @@ Value Search::AlphaBetaSearch(
 		BoardState nextBoard = board;
 		nextBoard.FillMove(move);
 
-		uint64_t hash = TranspositionTable::HashBoard(nextBoard);
-		TranspositionTable::Entry* entry = table->Find(hash);
+		nextEval = AlphaBetaSearch(table, nextBoard, outInfo, cache.ProgressDepth());
 
-		outInfo.totalTableSeaches++;
-		if (entry->hash == hash) {
-
-#if TEST_HASH_COLLISION
-			if (entry->board != nextBoard) {
-				ERR_CLOSE(
-					"Hash collision (depthRemaining: " << depthRemaining << ")" << std::endl <<
-					(void*)hash << " != " << (void*)TranspositionTable::HashBoard(entry->board) << std::endl <<
-					"Our board: " << nextBoard << ", entry's board: " << entry->board
-				);
-			}
-#endif
-
-			// Use the table entry
-			nextEval = entry->eval;
-			nextEval.depth++;
-			outInfo.totalTableHits++;
-		} else { // No table hit
-			nextEval = -AlphaBetaSearch(table, nextBoard, outInfo, cache.ProgressDepth());
-
-			entry->eval = nextEval;
-			entry->hash = hash;
-#if TEST_HASH_COLLISION
-			entry->board = nextBoard;
-#endif
-			nextEval.depth++;
-		}
+		nextEval = -nextEval;
+		nextEval.depth++;
 
 		if (nextEval >= cache.max) {
 			bestEval = nextEval;
-			if (cache.depthElapsed == 0)
-				outInfo.bestMove = move;
-
+			bestMove = move;
 			outInfo.totalPruned++;
+			hitCutoff = true;
 			break;
 		}
 
@@ -127,12 +134,43 @@ Value Search::AlphaBetaSearch(
 			if (nextEval > cache.min)
 				cache.min = nextEval;
 
-			if (cache.depthElapsed == 0)
-				outInfo.bestMove = move;
+			bestMove = move;
 		}
 	}
 
+	entry.hash = hash;
+	entry.bestMove = bestMove;
+	entry.eval = bestEval;
+	entry.isCutNode = hitCutoff;
+#if DEBUG_TRANSPOSITION_TABLE
+	entry.board = board;
+#endif
+	*entryPtr = entry;
+	outInfo.bestMove[cache.depthElapsed] = bestMove;
+
 	return bestEval;
+}
+
+std::vector<BoardMask> Search::FindPVFromTable(TranspositionTable* table, const BoardState& board, BoardMask firstMove) {
+	std::vector<BoardMask> result = { firstMove };
+	
+	BoardState curBoard = board;
+	curBoard.FillMove(firstMove);
+
+	while (true) {
+		auto hash = TranspositionTable::HashBoard(curBoard);
+		auto entry = table->Find(hash);
+		if (hash != entry->hash)
+			break;
+
+		if (entry->bestMove == 0)
+			break;
+
+		result.push_back(entry->bestMove);
+		curBoard.FillMove(entry->bestMove);
+	}
+
+	return result;
 }
 
 SearchResult Search::Search(TranspositionTable* table, const BoardState& board, bool log) {
@@ -163,16 +201,22 @@ SearchResult Search::Search(TranspositionTable* table, const BoardState& board, 
 
 		ERR_CLOSE("Thought we had winning move, but never found it");
 	}
-	
+
 	SearchInfo searchInfo = {};
 	Value eval = AlphaBetaSearch(table, board, searchInfo);
 	double timeElapsed = timer.Elapsed();
 
-	BoardMask bestMove = searchInfo.bestMove;
+	BoardMask bestMove = searchInfo.bestMove[0];
 	if (!bestMove) {
+		// Just pick the first valid move
 		auto itr = MoveIterator(validMoves);
 		bestMove = itr.GetNext();
 	}
+
+	auto pv = FindPVFromTable(table, board, bestMove);
+	std::string pvStr = {};
+	for (BoardMask move : pv)
+		pvStr += '1' + (int)(Util::BitMaskToIndex(move) / 8);
 
 	uint64_t movesPerSecond = searchInfo.totalSearched / timeElapsed;
 		
@@ -181,10 +225,10 @@ SearchResult Search::Search(TranspositionTable* table, const BoardState& board, 
 			"Eval: " << eval <<
 			", searched: " << Util::NumToStr(searchInfo.totalSearched) << "/" << Util::NumToStr(searchInfo.totalPruned) <<
 			", moves/sec: " << Util::NumToStr(movesPerSecond) <<
-			", winfrac: " << searchInfo.GetWinFrac() <<
 			", tablehitfrac: " << searchInfo.GetTableHitFrac() <<
 			", tablefillfrac: " << table->GetFillFrac()
 		);
+		LOG(" > PV: " << pvStr);
 	}
 
 	return { bestMove, eval };

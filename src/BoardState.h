@@ -125,8 +125,15 @@ struct BoardMask {
 		return result;
 	}
 
-	static constexpr BoardMask GetBottomMask() {
+	constexpr static BoardMask GetBottomMask() {
 		constexpr BoardMask result = _GetBottomMask();
+		return result;
+	}
+
+	constexpr static BoardMask GetColumnMask(uint8_t x) {
+		BoardMask result = {};
+		for (int y = 0; y < BOARD_SIZE_Y; y++)
+			result.Set(x, y, true);
 		return result;
 	}
 };
@@ -207,7 +214,11 @@ struct BoardState {
 	}
 
 	constexpr bool operator==(const BoardState& other) {
-		return teams[0] == other.teams[0] && teams[1] == other.teams[1] && turnSwitch == other.turnSwitch;
+		return 
+			(teams[0] == other.teams[0] && teams[1] == other.teams[1]) && 
+			(winMasks[0] == other.winMasks[0] && winMasks[1] == other.winMasks[1]) &&
+			turnSwitch == other.turnSwitch &&
+			moveCount == other.moveCount;
 	}
 
 	constexpr bool operator!=(const BoardState& other) {

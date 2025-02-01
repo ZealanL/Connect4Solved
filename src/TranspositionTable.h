@@ -2,15 +2,17 @@
 #include "BoardState.h"
 #include "Eval.h"
 
-#define TEST_HASH_COLLISION 0
+#define DEBUG_TRANSPOSITION_TABLE 0
 #define PRINT_HASHES 0
 
 struct TranspositionTable {
-	struct __declspec(align(1)) Entry {
+	struct Entry {
 		uint64_t hash;
+		uint64_t bestMove;
 		Value eval;
+		bool isCutNode;
 
-#if TEST_HASH_COLLISION
+#if DEBUG_TRANSPOSITION_TABLE
 		BoardState board;
 #endif
 

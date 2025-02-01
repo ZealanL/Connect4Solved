@@ -2,9 +2,10 @@
 
 std::ostream& operator<<(std::ostream& stream, const BoardState& boardState) {
 	stream << "{" << std::endl;
-	stream << std::string(BOARD_SIZE_X * 2 + 1, '_') << std::endl;
+	stream << "\tTurn: " << (int)boardState.turnSwitch << ", movecount: " << (int)boardState.moveCount << std::endl;
+	stream << '\t' << std::string(BOARD_SIZE_X * 2 + 1, '_') << std::endl;
 	for (int y = BOARD_SIZE_Y - 1; y >= 0; y--) {
-		stream << '|';
+		stream << "\t|";
 		for (int x = 0; x < BOARD_SIZE_X; x++) {
 			if (boardState.teams[0].Get(x, y)) {
 				stream << '@';
@@ -19,6 +20,7 @@ std::ostream& operator<<(std::ostream& stream, const BoardState& boardState) {
 		}
 		stream << '|' << std::endl;
 	}
+	stream << '\t';
 	for (int i = 0; i < BOARD_SIZE_X; i++)
 		stream << '=' << (i + 1);
 	stream << '=' << std::endl;
