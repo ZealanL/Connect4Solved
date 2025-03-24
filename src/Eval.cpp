@@ -98,9 +98,14 @@ bool Eval::IsWonAfterMove(const BoardState& board) {
 	return false;
 }
 
-Value Eval::EvalValidMoves(BoardMask hbSelf, BoardMask hbOpp, BoardMask selfWinMask, BoardMask oppWinMask, BoardMask& validMovesMask) {
+Value Eval::EvalValidMoves(const BoardState& board, BoardMask& validMovesMask) {
 	
-	BoardMask oppWinNextMask = oppWinMask & validMovesMask;
+	BoardMask hbSelf = board.teams[board.turnSwitch];
+	BoardMask hbOpp = board.teams[!board.turnSwitch];
+	BoardMask selfWin = board.winMasks[board.turnSwitch];
+	BoardMask oppWin = board.winMasks[!board.turnSwitch];
+
+	BoardMask oppWinNextMask = oppWin & validMovesMask;
 
 	// Ref: https://github.com/PascalPons/connect4/blob/master/Position.hpp#L188
 
@@ -117,7 +122,7 @@ Value Eval::EvalValidMoves(BoardMask hbSelf, BoardMask hbOpp, BoardMask selfWinM
 		}
 
 		// Everywhere below a winning square for the opponent
-		BoardMask belowOppWin = (oppWinMask >> 1);
+		BoardMask belowOppWin = (oppWin >> 1);
 
 		// We can't play there
 		validMovesMask &= ~belowOppWin;
@@ -143,7 +148,8 @@ Value Eval::EvalValidMoves(BoardMask hbSelf, BoardMask hbOpp, BoardMask selfWinM
 float Eval::RateMove(BoardMask hbSelf, BoardMask hbOpp, BoardMask selfWinMask, BoardMask moveMask, uint8_t moveCount) {
 	BoardMask hbSelfMoved = hbSelf | moveMask;
 	
-	float threatsEval = Util::BitCount64(hbSelfMoved.MakeWinMask() & ~hbOpp);
+	BoardMask newThreatsMask = hbSelfMoved.MakeWinMask() & ~hbOpp & ~selfWinMask;
+	float newThreatCount = Util::BitCount64(newThreatsMask);
 
 	constexpr auto fnBumpMask = [](BoardMask hb, BoardMask move, int shift) -> BoardMask {
 		return move & ((shift > 0) ? (hb << shift) : (hb >> -shift));
@@ -161,21 +167,22 @@ float Eval::RateMove(BoardMask hbSelf, BoardMask hbOpp, BoardMask selfWinMask, B
 	float makesRowSelf = Util::BitCount64(fnBumpMask2(hbSelf, moveMask, 8));
 	float makesRowOpp = Util::BitCount64(fnBumpMask2(hbOpp, moveMask, 8));
 
-	// Check if this makes a diagonal row with another piece
-	//int makesD1RowSelf = Util::BitCount64(fnBumpMask2(hbSelf, moveMask, 7) | fnBumpMask2(hbSelf, moveMask, 9));
-	//int makesD1RowOpp = Util::BitCount64(fnBumpMask2(hbOpp, moveMask, 7) | fnBumpMask2(hbOpp, moveMask, 9));
-
 	// Measure how off-center the move is
 	int moveIdx = Util::BitMaskToIndex(moveMask);
 	int moveX = moveIdx / 8;
 	int moveY = moveIdx % 8;
-	float offCenterAmountX = abs(moveX - BOARD_SIZE_X / 2.f);
-	float offCenterAmountY = abs(moveY - BOARD_SIZE_Y / 2.f);
+	float offCenterAmountX = 2 * abs(moveX - BOARD_SIZE_X / 2.f);
+	float offCenterAmountY = 2 * abs(moveY - BOARD_SIZE_Y / 2.f);
+
+	bool closesColumn = (moveY == (BOARD_SIZE_Y - 1));
+
+	// Threats are more important the lower they are
+	// This doesn't actually account for how high the threat itself is, but that doesn't seem to matter much
+	float threatScale = 1 + (moveY / (float)BOARD_SIZE_Y);
 
 	return
-		threatsEval * 2048
-		+ makesStackSelf * 256
-		- offCenterAmountX * 128
+		(newThreatCount * threatScale) * 512 // Top priority is making threats
+		+ closesColumn * 256 // Closing columns is usually good as it restricts the opponent
+		+ -offCenterAmountX // Last priority is being centered
 		;
-		
 }

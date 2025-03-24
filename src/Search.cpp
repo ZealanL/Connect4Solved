@@ -36,7 +36,7 @@ Value Search::AlphaBetaSearch(
 	BoardMask selfWinMask = board.winMasks[board.turnSwitch];
 	BoardMask oppWinMask = board.winMasks[!board.turnSwitch];
 
-	Value bestEval = Eval::EvalValidMoves(hbSelf, hbOpp, selfWinMask, oppWinMask, validMovesMask);
+	Value bestEval = Eval::EvalValidMoves(board, validMovesMask);
 	if (bestEval != VALUE_INVALID)
 		return bestEval;
 
@@ -60,7 +60,7 @@ Value Search::AlphaBetaSearch(
 		tableBestMove = entry.bestMove;
 
 		if (entry.eval >= cache.max) {
-			// Exceeds maximum, this is a cut mode
+			// Exceeds maximum, prune
 			return entry.eval;
 		} else if (!entry.isCutNode) { // It's exact
 			return entry.eval;

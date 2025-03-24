@@ -160,6 +160,11 @@ struct BoardState {
 	constexpr BoardState(BoardMask team0 = 0, BoardMask team1 = 0) {
 		teams[0] = team0;
 		teams[1] = team1;
+		winMasks[0] = teams[0].MakeWinMask();
+		winMasks[1] = teams[1].MakeWinMask();
+
+		moveCount = Util::BitCount64(GetCombinedMask());
+		turnSwitch = moveCount % 2;
 	}
 
 	constexpr BoardMask GetCombinedMask() const {
