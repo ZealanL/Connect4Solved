@@ -152,6 +152,13 @@ float RateBoardTeam(BoardMask hbSelf, BoardMask hbOpp, int teamIdx) {
 	int numThreats = Util::BitCount64(threatsMask);
 	rating += numThreats * 512;
 
+	if (teamIdx == 0) {
+		// First player prefers odd threats
+		rating += Util::BitCount64(threatsMask & BoardMask::GetParityRows(true)) * 128;
+	} else {
+		// Second player doesn't benefit from a preference
+	}
+
 	// Stacked threats are super powerful
 	BoardMask stackedThreatsMask = (threatsMask >> 1) & threatsMask;
 	int numStackedThreats = Util::BitCount64(stackedThreatsMask);
@@ -191,13 +198,8 @@ float Eval::RateMove(BoardMask hbSelf, BoardMask hbOpp, BoardMask selfWinMask, B
 	int moveX = moveIdx / 8;
 	int moveY = moveIdx % 8;
 	float offCenterAmountX = 2 * abs(moveX - BOARD_SIZE_X / 2.f);
-	float offCenterAmountY = 2 * abs(moveY - BOARD_SIZE_Y / 2.f);
 
 	bool closesColumn = (moveY == (BOARD_SIZE_Y - 1));
-
-	// Threats are more important the lower they are
-	// This doesn't actually account for how high the threat itself is, but that doesn't seem to matter much
-	float threatScale = 1 + (moveY / (float)BOARD_SIZE_Y);
 
 	return
 		nextBoardRating
