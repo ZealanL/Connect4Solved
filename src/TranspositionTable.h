@@ -8,7 +8,7 @@
 struct TranspositionTable {
 	struct Entry {
 		uint64_t hash;
-		uint64_t bestMove;
+		BoardMask bestMove;
 		Value eval;
 		bool isCutNode;
 
@@ -25,7 +25,7 @@ struct TranspositionTable {
 		}
 	};
 
-	constexpr static size_t SIZE = 1 << 25 /* Power of two for maximum "%" speed */;
+	constexpr static size_t SIZE = 1 << 23 /* Power of two for maximum "%" speed */;
 	constexpr static size_t SIZE_MBS = (sizeof(Entry) * SIZE) / 1'000'000;
 
 	////////////////////////////////////////////////////////////////////////

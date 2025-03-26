@@ -1,4 +1,5 @@
 #include "Search.h"
+#include "InstaSolver.h"
 
 uint64_t Search::PerfTest(const BoardState& board, int depth, int depthElapsed) {
 	BoardMask validMovesMask = board.GetValidMoveMask();
@@ -75,6 +76,25 @@ Value Search::AlphaBetaSearch(
 			);
 		}
 #endif
+	}
+
+	// Check insta-solve solution
+	// (We only check on at least 1 depth, otherwise the best move would fail)
+	if (cache.depthElapsed > 1) {
+		auto solveResult = InstaSolver::Solve(board);
+		if (solveResult.type) {
+			if (solveResult.type == InstaSolver::LOWER_BOUND) {
+				if (solveResult.eval >= cache.max) {
+					return solveResult.eval;
+				}
+			} else if (solveResult.type == InstaSolver::UPPER_BOUND) {
+				if (solveResult.eval < cache.min) {
+					return solveResult.eval;
+				}
+			} else if (solveResult.type == InstaSolver::EXACT) {
+				return solveResult.eval;
+			}
+		}
 	}
 
 	auto moveItr = MoveIterator(validMovesMask);

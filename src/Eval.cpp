@@ -10,6 +10,9 @@ constexpr int VERY_CENTERED_WEIGHT = 2;
 
 static BoardMask g_CenterMask, g_VeryCenterMask;
 
+constexpr BoardMask EVEN_ROWS = 0x5555555555555555;
+constexpr BoardMask ODD_ROWS = ~EVEN_ROWS;
+
 /////////////////////////////////////////
 
 constexpr int CONNECT_START_MARGIN = CONNECT_WIN_AMOUNT - 1;
@@ -145,11 +148,30 @@ Value Eval::EvalValidMoves(const BoardState& board, BoardMask& validMovesMask) {
 	return VALUE_INVALID;
 }
 
+float RateBoardTeam(BoardMask hbSelf, BoardMask hbOpp, int teamIdx) {
+	float rating = 0;
+
+	BoardMask threatsMask = hbSelf.MakeWinMask() & ~hbOpp;
+	int numThreats = Util::BitCount64(threatsMask);
+	rating += numThreats * 512;
+
+	// Stacked threats are super powerful
+	BoardMask stackedThreatsMask = (threatsMask >> 1) & threatsMask;
+	int numStackedThreats = Util::BitCount64(stackedThreatsMask);
+	rating += 4096 * numStackedThreats;
+
+	return rating;
+}
+
+float RateBoard(BoardMask hbSelf, BoardMask hbOpp, uint8_t moveCount) {
+	int teamIdx = moveCount % 2;
+	return RateBoardTeam(hbSelf, hbOpp, teamIdx) - RateBoardTeam(hbOpp, hbSelf, 1 - teamIdx);
+}
+
 float Eval::RateMove(BoardMask hbSelf, BoardMask hbOpp, BoardMask selfWinMask, BoardMask moveMask, uint8_t moveCount) {
+
 	BoardMask hbSelfMoved = hbSelf | moveMask;
-	
-	BoardMask newThreatsMask = hbSelfMoved.MakeWinMask() & ~hbOpp & ~selfWinMask;
-	float newThreatCount = Util::BitCount64(newThreatsMask);
+	float nextBoardRating = RateBoard(hbSelfMoved, hbOpp, moveCount + 1);
 
 	constexpr auto fnBumpMask = [](BoardMask hb, BoardMask move, int shift) -> BoardMask {
 		return move & ((shift > 0) ? (hb << shift) : (hb >> -shift));
@@ -181,7 +203,7 @@ float Eval::RateMove(BoardMask hbSelf, BoardMask hbOpp, BoardMask selfWinMask, B
 	float threatScale = 1 + (moveY / (float)BOARD_SIZE_Y);
 
 	return
-		(newThreatCount * threatScale) * 512 // Top priority is making threats
+		nextBoardRating
 		+ closesColumn * 256 // Closing columns is usually good as it restricts the opponent
 		+ -offCenterAmountX // Last priority is being centered
 		;

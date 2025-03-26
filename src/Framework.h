@@ -59,7 +59,7 @@
 }
 
 // Release-mode assertion
-#define RASSERT(cond, msg) { if (!(cond)) { ERR_CLOSE("Condition failed: \"" #cond "\": " << msg); } } 
+#define RASSERT(cond, msg) { if (!(cond)) { ERR_CLOSE("Condition failed: \"(" #cond ")\": " << msg); } } 
 
 #ifndef NDEBUG 
 #define ASSERT RASSERT

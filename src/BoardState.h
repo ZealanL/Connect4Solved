@@ -97,7 +97,6 @@ struct BoardMask {
 				winMask |= fnLoopMask(mask, 7, -i, CONNECT_WIN_AMOUNT);
 			}
 		}
-
 		return winMask & GetBoardMask();
 	}
 
@@ -215,7 +214,6 @@ struct BoardState {
 
 			DoMove(moveIndex);
 		}
-	
 	}
 
 	constexpr bool operator==(const BoardState& other) {
