@@ -24,7 +24,7 @@ struct BoardMask {
 		val64 |= bitMask;
 	}
 
-	constexpr uint8_t GetColumn(int x) {
+	constexpr uint8_t GetColumn(int x) const {
 		return (uint8_t)(val64 >> (x * 8));
 	}
 
@@ -104,36 +104,41 @@ struct BoardMask {
 		return MakeWinMask(*this);
 	}
 
-	constexpr static BoardMask _GetBoardMask() {
+private:
+	constexpr static BoardMask _MakeBoardMask() {
 		BoardMask result = {};
 		for (int x = 0; x < BOARD_SIZE_X; x++)
 			for (int y = 0; y < BOARD_SIZE_Y; y++)
 				result.Set(x, y, true);
 		return result;
 	}
-
+public:
 	constexpr static BoardMask GetBoardMask() {
-		constexpr BoardMask result = _GetBoardMask();
-		return result;
-	}
-
-	constexpr static BoardMask _GetBottomMask() {
-		BoardMask result = {};
-		for (int x = 0; x < BOARD_SIZE_X; x++)
-			result.Set(x, 0, true);
-		return result;
-	}
-
-	constexpr static BoardMask GetBottomMask() {
-		constexpr BoardMask result = _GetBottomMask();
+		constexpr BoardMask result = _MakeBoardMask();
 		return result;
 	}
 
 	constexpr static BoardMask GetColumnMask(uint8_t x) {
-		BoardMask result = {};
-		for (int y = 0; y < BOARD_SIZE_Y; y++)
-			result.Set(x, y, true);
-		return result;
+		constexpr BoardMask FIRST_COLUMN_MASK = 0xFF;
+		return (FIRST_COLUMN_MASK & GetBoardMask()) << (x * 8);
+	}
+
+	constexpr static BoardMask GetRowMask(uint8_t y) {
+		constexpr BoardMask FIRST_ROW_MASK = 0x101010101010101;
+		return (FIRST_ROW_MASK & GetBoardMask()) << y;
+	}
+
+	constexpr static BoardMask GetBottomMask() {
+		return GetRowMask(0);
+	}
+
+	constexpr static BoardMask GetParityRows(bool odd) {
+		constexpr BoardMask EVEN_MASK = 0x5555555555555555;
+		if (odd) {
+			return EVEN_MASK & GetBoardMask();
+		} else {
+			return ~EVEN_MASK & GetBoardMask();
+		}
 	}
 };
 

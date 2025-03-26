@@ -10,9 +10,6 @@ constexpr int VERY_CENTERED_WEIGHT = 2;
 
 static BoardMask g_CenterMask, g_VeryCenterMask;
 
-constexpr BoardMask EVEN_ROWS = 0x5555555555555555;
-constexpr BoardMask ODD_ROWS = ~EVEN_ROWS;
-
 /////////////////////////////////////////
 
 constexpr int CONNECT_START_MARGIN = CONNECT_WIN_AMOUNT - 1;
