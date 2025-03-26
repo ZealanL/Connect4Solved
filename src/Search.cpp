@@ -37,7 +37,7 @@ Value Search::AlphaBetaSearch(
 	BoardMask selfWinMask = board.winMasks[board.turnSwitch];
 	BoardMask oppWinMask = board.winMasks[!board.turnSwitch];
 
-	Value bestEval = Eval::EvalValidMoves(board, validMovesMask);
+	Value bestEval = Eval::EvalAndCropValidMoves(board, validMovesMask);
 	if (bestEval != VALUE_INVALID)
 		return bestEval;
 
@@ -78,29 +78,27 @@ Value Search::AlphaBetaSearch(
 #endif
 	}
 
+
 	// Check insta-solve solution
 	// (We only check on at least 1 depth, otherwise the best move would fail)
 	if (cache.depthElapsed > 1) {
 		auto solveResult = InstaSolver::Solve(board);
 		if (solveResult.type) {
-			if (solveResult.type == InstaSolver::LOWER_BOUND) {
-				if (solveResult.eval >= cache.max) {
-					return solveResult.eval;
-				}
-			} else if (solveResult.type == InstaSolver::UPPER_BOUND) {
-				if (solveResult.eval < cache.min) {
-					return solveResult.eval;
-				}
-			} else if (solveResult.type == InstaSolver::EXACT) {
+			bool returnSolveResult =
+				(solveResult.type == InstaSolver::LOWER_BOUND && solveResult.eval >= cache.max) ||
+				(solveResult.type == InstaSolver::UPPER_BOUND && solveResult.eval < cache.min) ||
+				(solveResult.type == InstaSolver::EXACT);
+
+			if (returnSolveResult)
 				return solveResult.eval;
-			}
 		}
 	}
+	auto nodesBefore = outInfo.totalSearched;
 
 	auto moveItr = MoveIterator(validMovesMask);
 	while (BoardMask move = moveItr.GetNext()) {
 
-		float moveRating = Eval::RateMove(hbSelf, hbOpp, selfWinMask, move, board.moveCount);
+		float moveRating = Eval::RateMove(board, move);
 
 		if (tableBestMove == move)
 			moveRating = FLT_MAX;

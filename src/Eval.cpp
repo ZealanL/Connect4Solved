@@ -98,7 +98,7 @@ bool Eval::IsWonAfterMove(const BoardState& board) {
 	return false;
 }
 
-Value Eval::EvalValidMoves(const BoardState& board, BoardMask& validMovesMask) {
+Value Eval::EvalAndCropValidMoves(const BoardState& board, BoardMask& validMovesMask) {
 	
 	BoardMask hbSelf = board.teams[board.turnSwitch];
 	BoardMask hbOpp = board.teams[!board.turnSwitch];
@@ -167,31 +167,25 @@ float RateBoardTeam(BoardMask hbSelf, BoardMask hbOpp, int teamIdx) {
 	return rating;
 }
 
-float RateBoard(BoardMask hbSelf, BoardMask hbOpp, uint8_t moveCount) {
-	int teamIdx = moveCount % 2;
-	return RateBoardTeam(hbSelf, hbOpp, teamIdx) - RateBoardTeam(hbOpp, hbSelf, 1 - teamIdx);
+float RateBoard(const BoardState& board, BoardMask moveMask) {
+	return RateBoardTeam(board.teams[board.turnSwitch] | moveMask, board.teams[!board.turnSwitch], board.turnSwitch)
+		- RateBoardTeam(board.teams[!board.turnSwitch], board.teams[board.turnSwitch] | moveMask, !board.turnSwitch);
 }
 
-float Eval::RateMove(BoardMask hbSelf, BoardMask hbOpp, BoardMask selfWinMask, BoardMask moveMask, uint8_t moveCount) {
+float Eval::RateMove(const BoardState& board, BoardMask moveMask) {
 
-	BoardMask hbSelfMoved = hbSelf | moveMask;
-	float nextBoardRating = RateBoard(hbSelfMoved, hbOpp, moveCount + 1);
+	auto hbSelf = board.teams[board.turnSwitch];
+	auto hbOpp = board.teams[!board.turnSwitch];
+
+	float nextBoardRating = RateBoard(board, moveMask);
 
 	constexpr auto fnBumpMask = [](BoardMask hb, BoardMask move, int shift) -> BoardMask {
-		return move & ((shift > 0) ? (hb << shift) : (hb >> -shift));
+		return move & (((shift > 0) ? (hb << shift) : (hb >> -shift)) & BoardMask::GetBoardMask());
 	};
 
 	constexpr auto fnBumpMask2 = [fnBumpMask](BoardMask hb, BoardMask move, int shift) -> BoardMask {
 		return (fnBumpMask(hb, move, shift) | fnBumpMask(hb, move, -shift));
 	};
-
-	// Check if this stacks on top of another piece
-	bool makesStackSelf = fnBumpMask(hbSelf, moveMask, 1) != 0;
-	bool makesStackOpp = fnBumpMask(hbOpp, moveMask, 1) != 0;
-
-	// Check if this makes a row with another piece
-	float makesRowSelf = Util::BitCount64(fnBumpMask2(hbSelf, moveMask, 8));
-	float makesRowOpp = Util::BitCount64(fnBumpMask2(hbOpp, moveMask, 8));
 
 	// Measure how off-center the move is
 	int moveIdx = Util::BitMaskToIndex(moveMask);

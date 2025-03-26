@@ -7,13 +7,7 @@ BoardState Testing::GeneratePosition(int numMoves) {
 
 		for (int i = 0; i < numMoves; i++) {
 			BoardMask validMovesMask = board.GetValidMoveMask();
-			Value value = Eval::EvalValidMoves(
-				board.teams[board.turnSwitch],
-				board.teams[!board.turnSwitch],
-				board.winMasks[board.turnSwitch],
-				board.winMasks[!board.turnSwitch],
-				validMovesMask
-			);
+			Value value = Eval::EvalAndCropValidMoves(board, validMovesMask);
 
 			if (value != VALUE_INVALID) {
 				// We detected a simple win/loss, retry
@@ -68,13 +62,7 @@ void Testing::TestMoveEval(TranspositionTable* table, int numSamples) {
 			BoardMask bestMove = {};
 			int bestMoveEval = -INT_MAX;
 			while (BoardMask move = moveItr.GetNext()) {
-				int moveEval = Eval::RateMove(
-					board.teams[board.turnSwitch],
-					board.teams[!board.turnSwitch],
-					board.winMasks[board.turnSwitch],
-					move,
-					board.moveCount
-				);
+				int moveEval = Eval::RateMove(board, move);
 
 				if (moveEval > bestMoveEval) {
 					bestMoveEval = moveEval;

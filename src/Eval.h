@@ -60,6 +60,6 @@ namespace Eval {
 
 	// Returns the eval if win/loss/draw, else returns VALUE_INVALID 
 	// Modifies validMovesMask if moves are forced
-	Value EvalValidMoves(const BoardState& board, BoardMask& validMovesMask);
-	float RateMove(BoardMask hbSelf, BoardMask hbOpp, BoardMask selfWinMask, BoardMask moveMask, uint8_t moveCount);
+	Value EvalAndCropValidMoves(const BoardState& board, BoardMask& validMovesMask);
+	float RateMove(const BoardState& board, BoardMask moveMask);
 }
