@@ -152,12 +152,9 @@ float RateBoardTeam(BoardMask hbSelf, BoardMask hbOpp, int teamIdx) {
 	int numThreats = Util::BitCount64(threatsMask);
 	rating += numThreats * 512;
 
-	if (teamIdx == 0) {
-		// First player prefers odd threats
-		rating += Util::BitCount64(threatsMask & BoardMask::GetParityRows(true)) * 128;
-	} else {
-		// Second player doesn't benefit from a preference
-	}
+	// Gaining an odd-row threat is generally advantageous
+	if (threatsMask & BoardMask::GetParityRows(true))
+		rating += 256;
 
 	// Stacked threats are super powerful
 	BoardMask stackedThreatsMask = (threatsMask >> 1) & threatsMask;
@@ -168,8 +165,7 @@ float RateBoardTeam(BoardMask hbSelf, BoardMask hbOpp, int teamIdx) {
 }
 
 float RateBoard(const BoardState& board, BoardMask moveMask) {
-	return RateBoardTeam(board.teams[board.turnSwitch] | moveMask, board.teams[!board.turnSwitch], board.turnSwitch)
-		- RateBoardTeam(board.teams[!board.turnSwitch], board.teams[board.turnSwitch] | moveMask, !board.turnSwitch);
+	return RateBoardTeam(board.teams[board.turnSwitch] | moveMask, board.teams[!board.turnSwitch], board.turnSwitch);
 }
 
 float Eval::RateMove(const BoardState& board, BoardMask moveMask) {

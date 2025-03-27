@@ -43,10 +43,11 @@ Value Search::AlphaBetaSearch(
 
 	bool useTable = board.moveCount < (BOARD_CELL_COUNT - 8);
 
-	uint64_t hash = TranspositionTable::HashBoard(board);
+	uint64_t hash = 0;
 	TranspositionTable::Entry* entryPtr = NULL;
 	TranspositionTable::Entry entry = {};
 	if (useTable) {
+		hash = TranspositionTable::HashBoard(board);
 		entryPtr = table->Find(hash);
 		entry = *entryPtr;
 		outInfo.totalTableSeaches++;
@@ -54,7 +55,7 @@ Value Search::AlphaBetaSearch(
 
 	BoardMask tableBestMove = 0;
 
-	if (entry.hash == hash) {
+	if (useTable && entry.hash == hash) {
 		// We have a matching entropy
 
 		tableBestMove = entry.bestMove;
@@ -141,8 +142,7 @@ Value Search::AlphaBetaSearch(
 			}
 		}
 	}
-
-	bool hitCutoff = false;
+	
 	BoardMask bestMove = 0;
 	for (size_t i = 0; i < numMoves; i++) {
 		Value nextEval = VALUE_INVALID;
@@ -152,7 +152,6 @@ Value Search::AlphaBetaSearch(
 		nextBoard.FillMove(move);
 
 		nextEval = AlphaBetaSearch(table, nextBoard, outInfo, cache.ProgressDepth());
-
 		nextEval = -nextEval;
 		nextEval.depth++;
 
@@ -160,7 +159,6 @@ Value Search::AlphaBetaSearch(
 			bestEval = nextEval;
 			bestMove = move;
 			outInfo.totalPruned++;
-			hitCutoff = true;
 			break;
 		}
 
@@ -173,6 +171,7 @@ Value Search::AlphaBetaSearch(
 			bestMove = move;
 		}
 	}
+	bool hitCutoff = bestEval >= cache.max;
 
 	if (useTable) {
 		entry.hash = hash;

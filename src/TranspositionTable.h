@@ -25,7 +25,7 @@ struct TranspositionTable {
 		}
 	};
 
-	constexpr static size_t SIZE = 1 << 23 /* Power of two for maximum "%" speed */;
+	constexpr static size_t SIZE = 1 << 25 /* Power of two for maximum "%" speed */;
 	constexpr static size_t SIZE_MBS = (sizeof(Entry) * SIZE) / 1'000'000;
 
 	////////////////////////////////////////////////////////////////////////
@@ -69,9 +69,10 @@ struct TranspositionTable {
 	}
 
 	double GetFillFrac() const {
+		constexpr size_t MAX_SAMPLES = MIN(100'000, SIZE);
 		size_t numFilled = 0;
-		for (size_t i = 0; i < SIZE; i++)
+		for (size_t i = 0; i < MAX_SAMPLES; i++)
 			numFilled += entries[i].IsValid();
-		return (double)numFilled / (double)SIZE;
+		return (double)numFilled / (double)MAX_SAMPLES;
 	}
 };

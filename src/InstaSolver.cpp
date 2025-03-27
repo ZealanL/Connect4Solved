@@ -12,6 +12,20 @@ bool CheckIsolatedColumns(const BoardState& board, InstaSolver::Result& outResul
 	struct Column {
 		uint8_t teamThreats[2];
 		uint8_t height;
+		uint64_t flags;
+
+		bool HasThreats() const {
+			return teamThreats[0] | teamThreats[1];
+		}
+
+		bool IsOdd() const {
+			return height % 2;
+		}
+
+		// Doesn't do anything
+		bool IsUseless() const {
+			return !HasThreats() && !IsOdd();
+		}
 	};
 
 	// More columns than this will guarantee potential cross-column interference
@@ -49,7 +63,8 @@ bool CheckIsolatedColumns(const BoardState& board, InstaSolver::Result& outResul
 			auto column = Column{
 				board.winMasks[0].GetColumn(i),
 				board.winMasks[1].GetColumn(i),
-				(uint8_t)Util::BitCount64(openSpace)
+				(uint8_t)Util::BitCount64(openSpace),
+				0
 			};
 
 			// Crop column to height
@@ -58,26 +73,26 @@ bool CheckIsolatedColumns(const BoardState& board, InstaSolver::Result& outResul
 				column.teamThreats[j] >>= startHeight;
 			}
 
-			ASSERT(numColumns < MAX_COLUMNS, "Bad column count during search");
-			columnBuffer[numColumns++] = column;
+			if (!column.IsUseless()) {
+				ASSERT(numColumns < MAX_COLUMNS, "Bad column count during search");
+				columnBuffer[numColumns++] = column;
+			}
 
 			lastColumnX = i;
 		}
 	}
-
-	// TODO: Analyze columns
-
+	
 	bool anyThreats = false;
 	for (int i = 0; i < numColumns; i++) {
 		auto& column = columnBuffer[i];
-		if (column.teamThreats[0] || column.teamThreats[1]) {
+		if (columnBuffer[i].HasThreats()) {
 			anyThreats = true;
 			break;
 		}
 	}
 
+	// No threats, draw
 	if (!anyThreats) {
-		// Draw
 		outResult = Result{
 			ResultType::EXACT,
 			Value(0)
@@ -85,55 +100,45 @@ bool CheckIsolatedColumns(const BoardState& board, InstaSolver::Result& outResul
 		return true;
 	}
 
-	return false;
-}
+	// Single useful column, evaluate
+	if (numColumns == 1) {
+		auto& column = columnBuffer[0];
 
-// Detects and solves single columns
-bool CheckSingleColumn(const BoardState& board, InstaSolver::Result& outResult) {
-	if (board.moveCount < BOARD_CELL_COUNT - BOARD_SIZE_Y)
-		return false; // Must be more than a column left
+		constexpr uint8_t FIRST_PLAYER_MASK = 0x55;
+		constexpr uint8_t SECOND_PLAYER_MASK = ~FIRST_PLAYER_MASK;
 
-	auto combinedMask = board.GetCombinedMask();
-	auto nextMoveMask = board.GetValidMoveMask();
-	
-	if (Util::BitCount64(nextMoveMask) != 1)
-		return false;
-
-	int nextMoveIdx = Util::BitMaskToIndex(nextMoveMask);
-	int row = Util::BitMaskToIndex(nextMoveMask) / 8;
-	bool nextMoveEven = Util::BitMaskToIndex(nextMoveMask) % 2;
-
-	uint8_t winColumns[2] = {
-		BoardMask(board.winMasks[0] & ~combinedMask & BoardMask::GetParityRows(true)).GetColumn(row),
-		BoardMask(board.winMasks[1] & ~combinedMask & BoardMask::GetParityRows(false)).GetColumn(row)
-	};
-
-	int winningTeam = -1;
-	if (winColumns[0] || winColumns[1]) {
-		// Win for someone
+		uint8_t firstPlayerThreats = column.teamThreats[1] & FIRST_PLAYER_MASK;
+		uint8_t secondPlayerThreats = column.teamThreats[0] & SECOND_PLAYER_MASK;
 		
-		if (winColumns[0] && winColumns[1]) {
-			winningTeam = (GetFirstBit(winColumns[0]) <= GetFirstBit(winColumns[1])) ? 0 : 1;
-		} else if (winColumns[0]) {
-			winningTeam = 0;
-		} else {
-			winningTeam = 1;
+		int winningPlayer = -1;
+		if (firstPlayerThreats && secondPlayerThreats) {
+			winningPlayer = (GetFirstBit(firstPlayerThreats) <= GetFirstBit(secondPlayerThreats)) ? 1 : 0;
+		} else if (firstPlayerThreats) {
+			winningPlayer = 1;
+		} else if (secondPlayerThreats) {
+			winningPlayer = 0;
 		}
 
-		outResult = Result{
-			ResultType::EXACT,
-			Value((winningTeam == (int)board.turnSwitch) ? 1 : -1, Util::BitCount64(~combinedMask & BoardMask::GetBoardMask())) // TODO: Wrong move count
-		};
-
-	} else {
-		// Draw
-		outResult = Result{
-			ResultType::EXACT,
-			Value(0, Util::BitCount64(~combinedMask & BoardMask::GetBoardMask()))
-		};
+		if (winningPlayer != -1) {
+			// Someone wins
+			outResult = Result{
+				ResultType::EXACT,
+				Value(
+					(winningPlayer == (int)board.turnSwitch) ? 1 : -1,
+					Util::BitCount64(~combinedMask & BoardMask::GetBoardMask())
+				) // TODO: Wrong move count
+			};
+		} else {
+			// It's a draw
+			outResult = Result{
+				ResultType::EXACT,
+				Value(0, 0)
+			};
+		}
+		return true;
 	}
 
-	return true;
+	return false;
 }
 
 // Detects and solves ClaimEven positions
@@ -200,7 +205,6 @@ InstaSolver::Result InstaSolver::Solve(const BoardState& board) {
 
 	if (
 		CheckClaimEven(board, result)
-		|| CheckSingleColumn(board, result)
 		|| CheckIsolatedColumns(board, result)
 		) {}
 
