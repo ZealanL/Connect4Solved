@@ -41,13 +41,6 @@ Value Search::AlphaBetaSearch(
 	if (bestEval != VALUE_INVALID)
 		return bestEval;
 
-	struct RatedMove {
-		BoardMask move;
-		float eval;
-	};
-	RatedMove ratedMoves[BOARD_SIZE_X];
-	int numMoves = 0;
-
 	bool useTable = board.moveCount < (BOARD_CELL_COUNT - 8);
 
 	uint64_t hash = TranspositionTable::HashBoard(board);
@@ -99,6 +92,26 @@ Value Search::AlphaBetaSearch(
 		}
 	}
 	auto nodesBefore = outInfo.totalSearched;
+
+	struct RatedMove {
+		BoardMask move;
+		float eval;
+	};
+	RatedMove ratedMoves[BOARD_SIZE_X];
+	int numMoves = 0;
+
+	if (board.IsSymmetrical()) {
+		// We can just only consider moves on one side
+		BoardMask sidedMask = 0;
+		for (int x = 0; x < BOARD_SIZE_X / 2 + 1; x++)
+			sidedMask |= BoardMask::GetColumnMask(x);
+
+		validMovesMask &= sidedMask;
+		if (tableBestMove && !(tableBestMove && sidedMask)) {
+			// Flip table best move to match our side
+			tableBestMove = tableBestMove.FlipX();
+		}
+	}
 
 	auto moveItr = MoveIterator(validMovesMask);
 	while (BoardMask move = moveItr.GetNext()) {

@@ -37,7 +37,14 @@ struct TranspositionTable {
 	}
 
 	static uint64_t HashBoard(const BoardState& board) {
-		return Util::FastHash(board.teams[0], false) ^ Util::FastHash(board.teams[1], true);
+		BoardMask flippedTeams[2];
+		for (int i = 0; i < 2; i++)
+			for (int x = 0; x < BOARD_SIZE_X; x++)
+				flippedTeams[i].GetColumn(x) = board.teams[i].GetColumn(BOARD_SIZE_X - x - 1);
+
+		return
+			(Util::FastHash(board.teams[0], false) ^ Util::FastHash(board.teams[1], true)) +
+			(Util::FastHash(board.teams[0].FlipX(), false) ^ Util::FastHash(board.teams[1].FlipX(), true));
 	}
 
 	void Reset() {

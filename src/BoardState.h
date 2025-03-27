@@ -28,6 +28,10 @@ struct BoardMask {
 		return (uint8_t)(val64 >> (x * 8));
 	}
 
+	uint8_t& GetColumn(int x) {
+		return *((uint8_t*)(&val64) + x);
+	}
+
 	constexpr operator uint64_t() const { return val64; }
 	constexpr operator uint64_t&() { return val64; }
 
@@ -102,6 +106,13 @@ struct BoardMask {
 
 	constexpr BoardMask MakeWinMask() const {
 		return MakeWinMask(*this);
+	}
+
+	constexpr BoardMask FlipX() const {
+		BoardMask flipped = 0;
+		for (int x = 0; x < BOARD_SIZE_X; x++)
+			flipped.GetColumn(x) = GetColumn(BOARD_SIZE_X - x - 1);
+		return flipped;
 	}
 
 private:
@@ -188,6 +199,19 @@ struct BoardState {
 		uint8_t column = GetCombinedMask().GetColumn(x);
 
 		return Util::BitCount64(column);
+	}
+
+	bool IsSymmetrical() const {
+		for (int x1 = 0; x1 < BOARD_SIZE_X / 2; x1++) {
+			int x2 = BOARD_SIZE_X - x1 - 1;
+			for (int i = 0; i < 2; i++) {
+				BoardMask mask = teams[i];
+				if (mask.GetColumn(x1) != mask.GetColumn(x2))
+					return false;
+			}
+		}
+
+		return true;
 	}
 
 	void FillMove(BoardMask moveMask) {
