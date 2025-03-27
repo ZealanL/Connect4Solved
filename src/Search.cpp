@@ -48,10 +48,16 @@ Value Search::AlphaBetaSearch(
 	RatedMove ratedMoves[BOARD_SIZE_X];
 	int numMoves = 0;
 
+	bool useTable = board.moveCount < (BOARD_CELL_COUNT - 8);
+
 	uint64_t hash = TranspositionTable::HashBoard(board);
-	TranspositionTable::Entry* entryPtr = table->Find(hash);
-	TranspositionTable::Entry entry = *entryPtr;
-	outInfo.totalTableSeaches++;
+	TranspositionTable::Entry* entryPtr = NULL;
+	TranspositionTable::Entry entry = {};
+	if (useTable) {
+		entryPtr = table->Find(hash);
+		entry = *entryPtr;
+		outInfo.totalTableSeaches++;
+	}
 
 	BoardMask tableBestMove = 0;
 
@@ -77,7 +83,6 @@ Value Search::AlphaBetaSearch(
 		}
 #endif
 	}
-
 
 	// Check insta-solve solution
 	// (We only check on at least 1 depth, otherwise the best move would fail)
@@ -156,14 +161,16 @@ Value Search::AlphaBetaSearch(
 		}
 	}
 
-	entry.hash = hash;
-	entry.bestMove = bestMove;
-	entry.eval = bestEval;
-	entry.isCutNode = hitCutoff;
+	if (useTable) {
+		entry.hash = hash;
+		entry.bestMove = bestMove;
+		entry.eval = bestEval;
+		entry.isCutNode = hitCutoff;
 #if DEBUG_TRANSPOSITION_TABLE
-	entry.board = board;
+		entry.board = board;
 #endif
-	*entryPtr = entry;
+		*entryPtr = entry;
+	}
 	outInfo.bestMove[cache.depthElapsed] = bestMove;
 
 	return bestEval;
