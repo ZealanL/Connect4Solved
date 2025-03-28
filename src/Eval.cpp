@@ -145,6 +145,43 @@ Value Eval::EvalAndCropValidMoves(const BoardState& board, BoardMask& validMoves
 	return VALUE_INVALID;
 }
 
+float Eval::EvalBoard(const BoardState& board) {
+	float rating = 0;
+
+	if (board.winMasks[0] || board.winMasks[1]) {
+		for (int x = 0; x < BOARD_SIZE_X; x++) {
+			auto columnMask = BoardMask::GetColumnMask(x);
+			bool winInColumn0 = board.winMasks[0] & columnMask;
+			bool winInColumn1 = board.winMasks[1] & columnMask;
+			if (winInColumn0 && winInColumn1) {
+
+				// Check who is lower
+				uint8_t firstWin0 = Util::GetByteFirstBit(board.winMasks[0].GetColumn(x));
+				uint8_t firstWin1 = Util::GetByteFirstBit(board.winMasks[1].GetColumn(x));
+
+				if (firstWin0 < firstWin1) {
+					rating += 1;
+				} else if (firstWin1 < firstWin0) {
+					rating -= 1;
+				}
+
+			} else if (winInColumn0) {
+				rating += 1;
+			} else if (winInColumn1) {
+				rating -= 1;
+			}
+		}
+	}
+
+	// Having an odd-row threat is generally advantageous
+	if (board.winMasks[0] & BoardMask::GetParityRows(true))
+		rating += 0.5;
+	if (board.winMasks[1] & BoardMask::GetParityRows(true))
+		rating -= 0.5;
+
+	return rating;
+}
+
 float RateBoardTeam(BoardMask hbSelf, BoardMask hbOpp, int teamIdx) {
 	float rating = 0;
 
@@ -172,6 +209,7 @@ float Eval::RateMove(const BoardState& board, BoardMask moveMask) {
 
 	auto hbSelf = board.teams[board.turnSwitch];
 	auto hbOpp = board.teams[!board.turnSwitch];
+	auto hbSelfWin = board.winMasks[board.turnSwitch];
 
 	float nextBoardRating = RateBoard(board, moveMask);
 
@@ -191,9 +229,14 @@ float Eval::RateMove(const BoardState& board, BoardMask moveMask) {
 
 	bool closesColumn = (moveY == (BOARD_SIZE_Y - 1));
 
+	bool belowOurWin = fnBumpMask(hbSelfWin, moveMask, -1);
+	bool belowOurWin2 = fnBumpMask(hbSelfWin, moveMask, -2);
+
 	return
 		nextBoardRating
-		+ closesColumn * 256 // Closing columns is usually good as it restricts the opponent
+		+ belowOurWin2 * 1024 // Creating a zungzwang threat is very
+		- belowOurWin * 512 // Losing our zungzwang is bad
+		+ closesColumn * 512 // Closing columns is usually good as it gives zungzwang back to the opponent
 		+ -offCenterAmountX // Last priority is being centered
 		;
 }
