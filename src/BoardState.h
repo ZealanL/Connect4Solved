@@ -175,8 +175,8 @@ struct BoardState {
 	constexpr BoardState(BoardMask team0 = 0, BoardMask team1 = 0) {
 		teams[0] = team0;
 		teams[1] = team1;
-		winMasks[0] = teams[0].MakeWinMask();
-		winMasks[1] = teams[1].MakeWinMask();
+		winMasks[0] = teams[0].MakeWinMask() & ~team1;
+		winMasks[1] = teams[1].MakeWinMask() & ~team0;
 
 		moveCount = Util::BitCount64(GetCombinedMask());
 		turnSwitch = moveCount % 2;
@@ -216,7 +216,7 @@ struct BoardState {
 
 	void FillMove(BoardMask moveMask) {
 		teams[turnSwitch] |= moveMask;
-		winMasks[turnSwitch] = teams[turnSwitch].MakeWinMask();
+		winMasks[turnSwitch] = teams[turnSwitch].MakeWinMask() & ~teams[!turnSwitch];
 		turnSwitch = !turnSwitch;
 		moveCount++;
 	}
