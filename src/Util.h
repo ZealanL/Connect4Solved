@@ -38,8 +38,11 @@ namespace Util {
 	constexpr uint64_t FastHash(uint64_t val, bool alt = false) {
 		// Ref: https://github.com/aappleby/smhasher/blob/master/src/MurmurHash3.cpp
 
+		constexpr uint64_t INITIAL_SEED = 0xa2c83bf90c0324;
 		constexpr uint64_t CONST_1 = 0xff51afd7ed558ccd;
 		constexpr uint64_t CONST_2 = 0xc4ceb9fe1a85ec53;
+
+		val ^= INITIAL_SEED;
 
 		val ^= val >> 33ull;
 		val *= alt ? CONST_2 : CONST_1;
@@ -47,5 +50,9 @@ namespace Util {
 		val *= alt ? CONST_1 : CONST_2;
 		val ^= val >> 33ull;
 		return val;
+	}
+
+	constexpr uint8_t GetByteFirstBit(uint8_t val) {
+		return val & -(int8_t)val;
 	}
 }

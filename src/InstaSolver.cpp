@@ -2,10 +2,6 @@
 
 using namespace InstaSolver;
 
-uint8_t GetFirstBit(uint8_t val) {
-	return val & -(int8_t)val;
-}
-
 // Detects and solves isolated columns
 bool CheckIsolatedColumns(const BoardState& board, InstaSolver::Result& outResult) {
 
@@ -112,7 +108,7 @@ bool CheckIsolatedColumns(const BoardState& board, InstaSolver::Result& outResul
 		
 		int winningPlayer = -1;
 		if (firstPlayerThreats && secondPlayerThreats) {
-			winningPlayer = (GetFirstBit(firstPlayerThreats) <= GetFirstBit(secondPlayerThreats)) ? 1 : 0;
+			winningPlayer = (Util::GetByteFirstBit(firstPlayerThreats) <= Util::GetByteFirstBit(secondPlayerThreats)) ? 1 : 0;
 		} else if (firstPlayerThreats) {
 			winningPlayer = 1;
 		} else if (secondPlayerThreats) {
@@ -175,7 +171,7 @@ bool CheckClaimEven(const BoardState& board, InstaSolver::Result& outResult) {
 				// We could win here
 				return false;
 			} else {
-				if (GetFirstBit(selfWinColumn) <= GetFirstBit(oppWinColumn)) {
+				if (Util::GetByteFirstBit(selfWinColumn) <= Util::GetByteFirstBit(oppWinColumn)) {
 					// We would win first
 					return false;
 				}
