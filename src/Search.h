@@ -39,6 +39,7 @@ struct SearchCache {
 struct SearchResult {
 	BoardMask move = 0;
 	Value eval;
+	uint64_t totalSearched = 0;
 };
 
 namespace Search {

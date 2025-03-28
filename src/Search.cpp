@@ -268,5 +268,5 @@ SearchResult Search::Search(TranspositionTable* table, const BoardState& board, 
 		LOG(" > PV: " << pvStr);
 	}
 
-	return { bestMove, eval };
+	return { bestMove, eval, searchInfo.totalSearched };
 }
